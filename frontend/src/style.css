@@ -1,0 +1,64 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  padding: 1rem;
+  max-width: 800px;
+  margin-inline: auto;
+  color: #1a1a1a;
+}
+
+nav {
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid #ddd;
+}
+
+nav a {
+  color: #333;
+  text-decoration: none;
+}
+
+nav a.router-link-active {
+  font-weight: bold;
+}
+
+nav button {
+  background: none;
+  border: none;
+  color: #333;
+  cursor: pointer;
+  font: inherit;
+}
+
+.auth-page {
+  max-width: 360px;
+}
+
+form label {
+  display: block;
+  margin-bottom: 0.75rem;
+}
+
+form input {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.4rem;
+  font: inherit;
+}
+
+form button {
+  padding: 0.5rem 1.5rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.error {
+  color: #c00;
+}

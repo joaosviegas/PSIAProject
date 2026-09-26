@@ -1,0 +1,43 @@
+spring:
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  mvc:
+    problemdetails:
+      enabled: true
+  ai:
+    ollama:
+      base-url: ${LLM_BASE_URL:http://localhost:11434}
+      chat:
+        model: ${LLM_MODEL:qwen2.5:1.5b}
+      init:
+        pull-model-strategy: never
+
+profile-service:
+  url: ${PROFILE_URL:http://localhost:8081}
+
+recommendation-service:
+  url: ${RECOMMENDATION_URL:http://localhost:8082}
+
+agent:
+  interval-seconds: ${AGENT_INTERVAL_SECONDS:120}
+
+feed:
+  ttl-hours: ${FEED_TTL_HOURS:24}
+
+llm:
+  timeout-seconds: ${LLM_TIMEOUT_SECONDS:180}
+
+jwt:
+  secret: ${JWT_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

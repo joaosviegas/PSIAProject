@@ -1,0 +1,9 @@
+docs/
+CLAUDE.md
+.env
+data/
+.claude/
+flake.lock
+flake.nix
+node_modules/dist/
+dist/

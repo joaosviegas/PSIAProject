@@ -1,0 +1,38 @@
+spring:
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/movies}
+    username: ${SPRING_DATASOURCE_USERNAME:movies_svc}
+    password: ${SPRING_DATASOURCE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+  mvc:
+    problemdetails:
+      enabled: true
+  ai:
+    ollama:
+      base-url: ${LLM_BASE_URL:http://localhost:11434}
+      chat:
+        model: ${LLM_MODEL:qwen2.5:1.5b}
+      init:
+        pull-model-strategy: never
+
+profile-service:
+  url: ${PROFILE_URL:http://localhost:8081}
+
+llm:
+  timeout-seconds: ${LLM_TIMEOUT_SECONDS:180}
+
+jwt:
+  secret: ${JWT_SECRET}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true

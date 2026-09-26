@@ -1,0 +1,60 @@
+# Gateway config. The nginx image renders this template at container start
+# (envsubst only replaces variables that are defined, so $uri etc. are untouched).
+#
+# Why "resolver + set $upstream": nginx then looks service names up at request
+# time instead of once at startup, so it survives a backend container being
+# recreated with a new IP, and it starts even if a backend is not up yet.
+# In Kubernetes (step 3) the *_UPSTREAM values become full service DNS names,
+# e.g. auth-service.default.svc.cluster.local:8080 (nginx's resolver ignores
+# resolv.conf search domains).
+
+server {
+    listen 80;
+    resolver ${NGINX_LOCAL_RESOLVERS} valid=10s;
+
+    root  /usr/share/nginx/html;
+    index index.html;
+    client_max_body_size 1m;
+
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # Vue single-page app: unknown paths fall back to index.html (client-side routing).
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # proxy_pass with a variable and no URI forwards the original /api/... path unchanged.
+    location /api/auth/ {
+        set $upstream http://${AUTH_UPSTREAM};
+        proxy_pass $upstream;
+    }
+
+    location /api/profiles {
+        set $upstream http://${PROFILE_UPSTREAM};
+        proxy_pass $upstream;
+    }
+
+    location /api/movies {
+        set $upstream http://${RECOMMENDATION_UPSTREAM};
+        proxy_pass $upstream;
+    }
+
+    location /api/recommendations {
+        set $upstream http://${RECOMMENDATION_UPSTREAM};
+        proxy_pass $upstream;
+        proxy_read_timeout 300s;          # LLM on CPU can take a while
+    }
+
+    location /api/feed {
+        set $upstream http://${AGENT_UPSTREAM};
+        proxy_pass $upstream;
+    }
+
+    # Anything else under /api is not public (e.g. /internal/** is never routed).
+    location /api/ {
+        return 404;
+    }
+}

@@ -1,0 +1,1 @@
+-- recommendation-service schema: populated in phase 2

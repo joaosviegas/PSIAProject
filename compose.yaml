@@ -1,0 +1,163 @@
+# PSIA Movie Recommendation Hub - local environment (project steps 1-2)
+#
+#   cp .env.example .env      # then edit the values
+#   just start                # = docker compose up -d --build
+#
+# Only the gateway publishes a port on the host (http://localhost:8080).
+# Service names below are also the DNS names services use to reach each other.
+
+name: psia
+
+# Settings shared by the four Spring Boot services.
+x-java-service: &java-service
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health/readiness || exit 1"]
+    interval: 10s
+    timeout: 3s
+    retries: 30
+    start_period: 40s
+
+services:
+
+  # ---------- Entry point: nginx serving the Vue build + reverse proxy for /api/* ----------
+  gateway:
+    build: ./frontend
+    ports:
+      - "${GATEWAY_PORT:-8080}:80"
+    environment:
+      NGINX_ENTRYPOINT_LOCAL_RESOLVERS: "1"          # exposes $NGINX_LOCAL_RESOLVERS to the template
+      AUTH_UPSTREAM: auth-service:8080
+      PROFILE_UPSTREAM: profile-service:8080
+      RECOMMENDATION_UPSTREAM: recommendation-service:8080
+      AGENT_UPSTREAM: agent-service:8080
+    depends_on:
+      - auth-service
+      - profile-service
+      - recommendation-service
+      - agent-service
+
+  # ---------- Application services (Spring Boot) ----------
+  auth-service:
+    <<: *java-service
+    build: ./services/auth-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth
+      SPRING_DATASOURCE_USERNAME: auth_svc
+      SPRING_DATASOURCE_PASSWORD: ${AUTH_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-120}
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  profile-service:
+    <<: *java-service
+    build: ./services/profile-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/profile
+      SPRING_DATASOURCE_USERNAME: profile_svc
+      SPRING_DATASOURCE_PASSWORD: ${PROFILE_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  recommendation-service:
+    <<: *java-service
+    build: ./services/recommendation-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/movies
+      SPRING_DATASOURCE_USERNAME: movies_svc
+      SPRING_DATASOURCE_PASSWORD: ${MOVIES_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      PROFILE_URL: http://profile-service:8080
+      LLM_BASE_URL: http://llm:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:1.5b}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-180}
+    depends_on:
+      postgres: { condition: service_healthy }
+      llm: { condition: service_healthy } # so it doesn't wait for the model to be fully downloaded
+
+  agent-service:
+    <<: *java-service
+    build: ./services/agent-service
+    environment:
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      PROFILE_URL: http://profile-service:8080
+      RECOMMENDATION_URL: http://recommendation-service:8080
+      LLM_BASE_URL: http://llm:11434
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5:1.5b}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-180}
+      AGENT_INTERVAL_SECONDS: ${AGENT_INTERVAL_SECONDS:-120}
+      FEED_TTL_HOURS: ${FEED_TTL_HOURS:-24}
+    depends_on:
+      redis: { condition: service_healthy }
+      llm: { condition: service_healthy } # so it doesn't wait for the model to be fully downloaded
+
+  # ---------- Data stores ----------
+  # One Postgres server, one database + one login role per service.
+  # A role can only connect to its own database (see infra/postgres/init/).
+  postgres:
+    image: postgres:17          # keep 17: the 18 image changed its data path and ignores this volume mount
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
+      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
+      PROFILE_DB_PASSWORD: ${PROFILE_DB_PASSWORD}
+      MOVIES_DB_PASSWORD: ${MOVIES_DB_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    # -h 127.0.0.1 matters: during first-time init the server only listens on a
+    # unix socket, so a TCP check does not report "ready" before init has finished.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d movies"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+    # Uncomment to inspect the databases from your machine (DBeaver, psql):
+    ports: ["5432:5432"]
+
+  # Agent's dedicated store (recommendation feed cache). AOF keeps it across restarts.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # ---------- Inference engine ----------
+  llm:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    # Uncomment to call Ollama directly from your machine while developing prompts:
+    # ports: ["11434:11434"]
+
+  # One-shot job: downloads the model into the shared volume, then exits (fast on later runs).
+  llm-init:
+    image: ollama/ollama:latest
+    restart: on-failure
+    environment:
+      OLLAMA_HOST: http://llm:11434
+    entrypoint: ["ollama", "pull", "${LLM_MODEL:-qwen2.5:1.5b}"]
+    depends_on:
+      llm: { condition: service_healthy }
+
+volumes:
+  postgres-data:
+  redis-data:
+  ollama-models:
