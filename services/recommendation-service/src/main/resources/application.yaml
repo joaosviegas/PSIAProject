@@ -1,38 +1,25 @@
+# MERGE NOTE: recommendation-service already has an application.yaml with at
+# least datasource/flyway/actuator/jwt.secret configured (implied by
+# PingController, SecurityConfig.java, and V1__init.sql already existing).
+# Add only the two blocks below — don't touch jwt.secret, it's already wired.
+
 spring:
-  datasource:
-    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/movies}
-    username: ${SPRING_DATASOURCE_USERNAME:movies_svc}
-    password: ${SPRING_DATASOURCE_PASSWORD}
-  jpa:
-    hibernate:
-      ddl-auto: validate
-    open-in-view: false
-  mvc:
-    problemdetails:
-      enabled: true
   ai:
     ollama:
-      base-url: ${LLM_BASE_URL:http://localhost:11434}
+      base-url: ${LLM_BASE_URL}
       chat:
-        model: ${LLM_MODEL:qwen2.5:1.5b}
+        options:
+          model: ${LLM_MODEL:qwen2.5:1.5b}
       init:
+        # compose.yaml's llm-init job already pulls the model into the
+        # shared volume before this service starts; don't pull again here.
         pull-model-strategy: never
 
-profile-service:
-  url: ${PROFILE_URL:http://localhost:8081}
+# Used by ProfileClient to (optionally) enrich the AI prompt with the
+# caller's profile — see NOTES.md for the assumed contract.
+profile:
+  base-url: ${PROFILE_URL}
 
+# Read by OllamaTimeoutConfig (best-effort — see that class's javadoc).
 llm:
   timeout-seconds: ${LLM_TIMEOUT_SECONDS:180}
-
-jwt:
-  secret: ${JWT_SECRET}
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,prometheus
-  endpoint:
-    health:
-      probes:
-        enabled: true

@@ -1,13 +1,21 @@
 import { auth } from './auth'
 import router from './router'
 
-async function request(method, path, body) {
+async function request(method, path, body, params) {
   const headers = { 'Content-Type': 'application/json' }
   if (auth.token) {
     headers['Authorization'] = `Bearer ${auth.token}`
   }
+  
+  let url = `/api${path}`
+  if (params) {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v !== undefined && v !== null)
+    ).toString()
+    if (qs) url += `?${qs}`
+  }
 
-  const res = await fetch(`/api${path}`, {
+  const res = await fetch(url, {
     method,
     headers,
     body: body != null ? JSON.stringify(body) : undefined,
@@ -29,7 +37,7 @@ async function request(method, path, body) {
 }
 
 export const api = {
-  get: (path) => request('GET', path),
+  get: (path, opts) => request('GET', path, undefined, opts?.params),
   post: (path, body) => request('POST', path, body),
   put: (path, body) => request('PUT', path, body),
   delete: (path) => request('DELETE', path),
