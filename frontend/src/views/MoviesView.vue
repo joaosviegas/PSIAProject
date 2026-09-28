@@ -4,6 +4,9 @@ import { api } from '../api'
 
 const query = ref('')
 const genre = ref('')
+const yearFrom = ref('')
+const yearTo = ref('')
+const minRating = ref('')
 const genres = ref([])
 const movies = ref([])
 const page = ref(0)
@@ -28,6 +31,9 @@ async function search() {
       params: {
         query: query.value || undefined,
         genre: genre.value || undefined,
+        yearFrom: yearFrom.value || undefined,
+        yearTo: yearTo.value || undefined,
+        minRating: minRating.value || undefined,
         page: page.value,
         size: 20,
       },
@@ -56,7 +62,7 @@ function prevPage() {
   }
 }
 
-watch([query, genre], () => {
+watch([query, genre, yearFrom, yearTo, minRating], () => {
   page.value = 0
   search()
 })
@@ -75,12 +81,24 @@ onMounted(() => {
       <input
         v-model="query"
         type="text"
-        placeholder="Search by title..."
+        placeholder="Search title, director, actor..."
         class="search-input"
       />
-      <select v-model="genre" class="genre-select">
+      <select v-model="genre" class="filter-select">
         <option value="">All genres</option>
         <option v-for="g in genres" :key="g" :value="g">{{ g }}</option>
+      </select>
+    </div>
+    <div class="filters">
+      <input v-model="yearFrom" type="number" placeholder="Year from" min="1900" max="2030" class="filter-small" />
+      <input v-model="yearTo" type="number" placeholder="Year to" min="1900" max="2030" class="filter-small" />
+      <select v-model="minRating" class="filter-select">
+        <option value="">Any rating</option>
+        <option value="9">★ 9+</option>
+        <option value="8">★ 8+</option>
+        <option value="7">★ 7+</option>
+        <option value="6">★ 6+</option>
+        <option value="5">★ 5+</option>
       </select>
     </div>
 
@@ -118,19 +136,24 @@ onMounted(() => {
 .filters {
   display: flex;
   gap: 0.75rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 0.75rem;
 }
 .search-input {
   flex: 1;
   padding: 0.5rem;
 }
-.genre-select {
+.filter-select {
+  padding: 0.5rem;
+}
+.filter-small {
+  width: 110px;
   padding: 0.5rem;
 }
 .movie-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
+  margin-top: 0.75rem;
 }
 .movie-card {
   display: flex;
@@ -173,6 +196,7 @@ onMounted(() => {
   display: -webkit-box;
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
+  line-clamp: 3;
   overflow: hidden;
 }
 .pagination {

@@ -53,7 +53,7 @@ class MovieControllerTest {
                 "https://image.tmdb.org/t/p/w342/poster.jpg",
                 "Frank Darabont", "Tim Robbins|Morgan Freeman", 142
         );
-        when(movieService.search(any(), any(), any())).thenReturn(new PageImpl<>(List.of(movie)));
+        when(movieService.search(any(), any(), any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of(movie)));
 
         mvc.perform(get("/api/movies").param("query", "shawshank").with(jwt()))
                 .andExpect(status().isOk())

@@ -16,11 +16,13 @@ public class MovieService {
         this.movieRepository = movieRepository;
     }
 
-    public Page<MovieResponse> search(String query, String genre, Pageable pageable) {
-        String normalizedQuery = (query == null || query.isBlank()) ? null : query.trim();
-        String normalizedGenre = (genre == null || genre.isBlank()) ? null : genre.trim();
+    public Page<MovieResponse> search(String query, String genre,
+                                      Integer yearFrom, Integer yearTo,
+                                      Double minRating, Pageable pageable) {
+        String q = (query == null || query.isBlank()) ? null : query.trim();
+        String g = (genre == null || genre.isBlank()) ? null : genre.trim();
 
-        Page<Movie> page = movieRepository.search(normalizedQuery, normalizedGenre, pageable);
+        Page<Movie> page = movieRepository.search(q, g, yearFrom, yearTo, minRating, pageable);
         return page.map(MovieResponse::from);
     }
 }

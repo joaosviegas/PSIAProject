@@ -13,29 +13,36 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
 
     long countBy();
 
-    /**
-     * Free-text title search plus an optional genre filter (substring match
-     * against the semicolon-separated genres column). Either filter can be
-     * null to be ignored.
-     */
+    // ponytail: single native query handles all filters via IS NULL bypass; add full-text search if ILIKE gets slow on 100k+ rows
     @Query(value = """
             SELECT * FROM movies m
-            WHERE (:title IS NULL OR m.title ILIKE CONCAT('%', :title, '%'))
+            WHERE (:query IS NULL OR m.title ILIKE CONCAT('%', :query, '%')
+                                  OR m.directors ILIKE CONCAT('%', :query, '%')
+                                  OR m.stars ILIKE CONCAT('%', :query, '%'))
               AND (:genre IS NULL OR m.genres ILIKE CONCAT('%', :genre, '%'))
+              AND (:yearFrom IS NULL OR m.start_year >= :yearFrom)
+              AND (:yearTo IS NULL OR m.start_year <= :yearTo)
+              AND (:minRating IS NULL OR m.avg_rating >= :minRating)
             ORDER BY m.num_votes DESC NULLS LAST
             """,
             countQuery = """
             SELECT count(*) FROM movies m
-            WHERE (:title IS NULL OR m.title ILIKE CONCAT('%', :title, '%'))
+            WHERE (:query IS NULL OR m.title ILIKE CONCAT('%', :query, '%')
+                                  OR m.directors ILIKE CONCAT('%', :query, '%')
+                                  OR m.stars ILIKE CONCAT('%', :query, '%'))
               AND (:genre IS NULL OR m.genres ILIKE CONCAT('%', :genre, '%'))
+              AND (:yearFrom IS NULL OR m.start_year >= :yearFrom)
+              AND (:yearTo IS NULL OR m.start_year <= :yearTo)
+              AND (:minRating IS NULL OR m.avg_rating >= :minRating)
             """,
             nativeQuery = true)
-    Page<Movie> search(@Param("title") String title, @Param("genre") String genre, Pageable pageable);
+    Page<Movie> search(@Param("query") String query,
+                       @Param("genre") String genre,
+                       @Param("yearFrom") Integer yearFrom,
+                       @Param("yearTo") Integer yearTo,
+                       @Param("minRating") Double minRating,
+                       Pageable pageable);
 
-    /**
-     * Candidate pool for the LLM: movies matching at least one of the
-     * requested genres, best-rated first. Used by RecommendationService.
-     */
     @Query(value = """
             SELECT * FROM movies m
             WHERE (:genresCsv = '' OR EXISTS (

@@ -26,11 +26,15 @@ public class MovieController {
     public Page<MovieResponse> search(
             @RequestParam(required = false) String query,
             @RequestParam(required = false) String genre,
+            @RequestParam(required = false) Integer yearFrom,
+            @RequestParam(required = false) Integer yearTo,
+            @RequestParam(required = false) Double minRating,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size
     ) {
         int safeSize = Math.min(Math.max(size, 1), 50);
-        return movieService.search(query, genre, PageRequest.of(Math.max(page, 0), safeSize));
+        return movieService.search(query, genre, yearFrom, yearTo, minRating,
+                PageRequest.of(Math.max(page, 0), safeSize));
     }
 
     @GetMapping("/genres")
