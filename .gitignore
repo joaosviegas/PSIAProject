@@ -2,6 +2,7 @@ docs/
 CLAUDE.md
 .env
 data/
+!**/src/main/resources/data/
 .claude/
 flake.lock
 flake.nix

@@ -33,7 +33,6 @@ clean:
 nuke:
     docker compose down -v
     rm -rf dataset/raw
-    rm -rf dataset/raw services/recommendation-service/src/main/resources/data/movies.csv
 
 # Delete local build output (node_modules, dist, target) and Docker's build cache. Rarely needed.
 clean-build:
@@ -43,23 +42,6 @@ clean-build:
 # Rebuild and restart one service, e.g. `just restart auth-service`
 restart service:
     docker compose up -d --build {{service}}
-
-# Download + filter the IMDb dataset into recommendation-service's movie
-# catalog, then rebuild it so MovieDataLoader picks up the new CSV on
-# startup (see dataset/README.md). Safe to re-run: the loader only
-# populates the `movies` table the first time it's empty.
-# e.g. `just movies-seed` or `just movies-seed min_votes=20000`
-movies-seed min_votes="5000": _check-env
-    mkdir -p dataset/raw
-    @gzip -t dataset/raw/title.basics.tsv.gz 2>/dev/null || (rm -f dataset/raw/title.basics.tsv.gz && curl -fsSL -o dataset/raw/title.basics.tsv.gz https://datasets.imdbws.com/title.basics.tsv.gz)
-    @gzip -t dataset/raw/title.ratings.tsv.gz 2>/dev/null || (rm -f dataset/raw/title.ratings.tsv.gz && curl -fsSL -o dataset/raw/title.ratings.tsv.gz https://datasets.imdbws.com/title.ratings.tsv.gz)
-    @test -s services/recommendation-service/src/main/resources/data/movies.csv || python3 dataset/filter_imdb.py \
-        --basics dataset/raw/title.basics.tsv.gz \
-        --ratings dataset/raw/title.ratings.tsv.gz \
-        --min-votes {{min_votes}} \
-        --out services/recommendation-service/src/main/resources/data/movies.csv
-    docker compose up -d --build recommendation-service
-    @echo "Catalog seeded — check 'just logs recommendation-service' for 'Loaded N movies into the catalog'."
 
 # Follow logs, e.g. `just logs` or `just logs recommendation-service`
 logs service="":

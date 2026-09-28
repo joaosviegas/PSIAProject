@@ -18,10 +18,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Loads src/main/resources/data/movies.csv into the movies table the first
- * time the table is empty. See dataset/README.md for how to generate that
- * CSV from the IMDb exports. Safe to run on every startup — it's a no-op
- * once the table has rows.
+ * Loads src/main/resources/data/movies.csv (the enriched dataset) into the
+ * movies table the first time the table is empty. Safe to run on every
+ * startup — it's a no-op once the table has rows.
  */
 @Component
 public class MovieDataLoader implements CommandLineRunner {
@@ -46,8 +45,7 @@ public class MovieDataLoader implements CommandLineRunner {
 
         ClassPathResource resource = new ClassPathResource(CSV_PATH);
         if (!resource.exists()) {
-            log.warn("No {} found on the classpath — movie catalog will be empty. " +
-                    "See dataset/README.md to generate it.", CSV_PATH);
+            log.warn("No {} found on the classpath — movie catalog will be empty.", CSV_PATH);
             return;
         }
 
@@ -58,13 +56,22 @@ public class MovieDataLoader implements CommandLineRunner {
 
             List<Object[]> batch = new ArrayList<>(BATCH_SIZE);
             for (CSVRecord record : parser) {
+                // Enriched CSV uses "|" as genre separator; DB convention is ";"
+                String genres = record.get("genres");
+                if (genres != null) genres = genres.replace("|", ";");
+
                 batch.add(new Object[]{
-                        record.get("imdb_id"),
+                        record.get("tconst"),
                         record.get("title"),
-                        parseIntOrNull(record.get("start_year")),
-                        record.get("genres"),
-                        parseDecimalOrNull(record.get("avg_rating")),
-                        parseIntOrNull(record.get("num_votes")),
+                        parseIntOrNull(record.get("year")),
+                        genres,
+                        parseDecimalOrNull(record.get("rating")),
+                        parseIntOrNull(record.get("votes")),
+                        nullIfEmpty(record.get("overview")),
+                        nullIfEmpty(record.get("poster_url")),
+                        nullIfEmpty(record.get("directors")),
+                        nullIfEmpty(record.get("stars")),
+                        parseIntOrNull(record.get("runtime_minutes")),
                 });
                 if (batch.size() == BATCH_SIZE) {
                     insertBatch(batch);
@@ -84,27 +91,26 @@ public class MovieDataLoader implements CommandLineRunner {
 
     private void insertBatch(List<Object[]> batch) {
         jdbcTemplate.batchUpdate(
-                "INSERT INTO movies (imdb_id, title, start_year, genres, avg_rating, num_votes) " +
-                        "VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT (imdb_id) DO NOTHING",
+                "INSERT INTO movies (imdb_id, title, start_year, genres, avg_rating, num_votes, " +
+                        "overview, poster_url, directors, stars, runtime_minutes) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (imdb_id) DO NOTHING",
                 batch
         );
     }
 
     private Integer parseIntOrNull(String s) {
         if (s == null || s.isBlank()) return null;
-        try {
-            return Integer.parseInt(s.trim());
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        try { return Integer.parseInt(s.trim()); }
+        catch (NumberFormatException e) { return null; }
     }
 
     private BigDecimal parseDecimalOrNull(String s) {
         if (s == null || s.isBlank()) return null;
-        try {
-            return new BigDecimal(s.trim());
-        } catch (NumberFormatException e) {
-            return null;
-        }
+        try { return new BigDecimal(s.trim()); }
+        catch (NumberFormatException e) { return null; }
+    }
+
+    private String nullIfEmpty(String s) {
+        return (s == null || s.isBlank()) ? null : s;
     }
 }

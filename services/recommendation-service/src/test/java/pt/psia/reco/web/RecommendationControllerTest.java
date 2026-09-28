@@ -60,7 +60,10 @@ class RecommendationControllerTest {
     void validRequestReturnsRecommendations() throws Exception {
         MovieResponse movie = new MovieResponse(
                 1L, "tt0111161", "The Shawshank Redemption", 1994,
-                List.of("Drama"), new BigDecimal("9.3"), 2_800_000
+                List.of("Drama"), new BigDecimal("9.3"), 2_800_000,
+                "A banker is sentenced to life in Shawshank.",
+                "https://image.tmdb.org/t/p/w342/poster.jpg",
+                "Frank Darabont", "Tim Robbins|Morgan Freeman", 142
         );
         when(recommendationService.recommend(any(), any()))
                 .thenReturn(new RecommendationResponse("Great picks for a drama mood.", List.of(movie), true));

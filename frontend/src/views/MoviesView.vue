@@ -90,9 +90,14 @@ onMounted(() => {
 
     <div v-else class="movie-grid">
       <div v-for="m in movies" :key="m.id" class="movie-card">
-        <h3>{{ m.title }} <span v-if="m.startYear">({{ m.startYear }})</span></h3>
-        <p class="genres">{{ m.genres.join(', ') }}</p>
-        <p v-if="m.avgRating" class="rating">★ {{ m.avgRating }} ({{ m.numVotes }} votes)</p>
+        <img v-if="m.posterUrl" :src="m.posterUrl" :alt="m.title" class="poster" />
+        <div class="movie-info">
+          <h3>{{ m.title }} <span v-if="m.startYear">({{ m.startYear }})</span></h3>
+          <p class="genres">{{ m.genres.join(', ') }}</p>
+          <p v-if="m.avgRating" class="rating">★ {{ m.avgRating }} ({{ m.numVotes }} votes)</p>
+          <p v-if="m.directors" class="meta">Dir: {{ m.directors }}</p>
+          <p v-if="m.overview" class="overview">{{ m.overview }}</p>
+        </div>
       </div>
     </div>
 
@@ -124,16 +129,28 @@ onMounted(() => {
 }
 .movie-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
 }
 .movie-card {
+  display: flex;
+  gap: 0.75rem;
   border: 1px solid #ddd;
   border-radius: 8px;
-  padding: 1rem;
+  padding: 0.75rem;
+}
+.poster {
+  width: 80px;
+  height: 120px;
+  object-fit: cover;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.movie-info {
+  min-width: 0;
 }
 .movie-card h3 {
-  margin: 0 0 0.5rem;
+  margin: 0 0 0.35rem;
   font-size: 1rem;
 }
 .genres {
@@ -142,7 +159,21 @@ onMounted(() => {
 }
 .rating {
   font-size: 0.85rem;
-  margin-top: 0.5rem;
+  margin-top: 0.25rem;
+}
+.meta {
+  font-size: 0.8rem;
+  color: #888;
+  margin-top: 0.25rem;
+}
+.overview {
+  font-size: 0.8rem;
+  color: #444;
+  margin-top: 0.35rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .pagination {
   display: flex;

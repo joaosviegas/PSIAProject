@@ -33,6 +33,21 @@ public class Movie {
     @Column(name = "num_votes")
     private Integer numVotes;
 
+    @Column(columnDefinition = "TEXT")
+    private String overview;
+
+    @Column(name = "poster_url")
+    private String posterUrl;
+
+    @Column
+    private String directors;
+
+    @Column
+    private String stars;
+
+    @Column(name = "runtime_minutes")
+    private Integer runtimeMinutes;
+
     protected Movie() {
         // JPA
     }
@@ -54,31 +69,16 @@ public class Movie {
         return Arrays.asList(genres.split(";"));
     }
 
-    public Long getId() {
-        return id;
-    }
-
-    public String getImdbId() {
-        return imdbId;
-    }
-
-    public String getTitle() {
-        return title;
-    }
-
-    public Integer getStartYear() {
-        return startYear;
-    }
-
-    public String getGenres() {
-        return genres;
-    }
-
-    public BigDecimal getAvgRating() {
-        return avgRating;
-    }
-
-    public Integer getNumVotes() {
-        return numVotes;
-    }
+    public Long getId() { return id; }
+    public String getImdbId() { return imdbId; }
+    public String getTitle() { return title; }
+    public Integer getStartYear() { return startYear; }
+    public String getGenres() { return genres; }
+    public BigDecimal getAvgRating() { return avgRating; }
+    public Integer getNumVotes() { return numVotes; }
+    public String getOverview() { return overview; }
+    public String getPosterUrl() { return posterUrl; }
+    public String getDirectors() { return directors; }
+    public String getStars() { return stars; }
+    public Integer getRuntimeMinutes() { return runtimeMinutes; }
 }
