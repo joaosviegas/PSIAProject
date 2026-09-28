@@ -9,7 +9,6 @@ ask an LLM for recommendations, and get a feed pre-computed by a background agen
 - **Docker** (Desktop on macOS/Windows with >= 8 GB memory; on Windows use WSL2)
 - **[just](https://github.com/casey/just)** — command runner (like make but simpler)
 - **git**, **curl**, **jq** — used by `scripts/smoke.sh`
-- **Python 3** — only needed for `just movies-seed` (filters the IMDb dataset before it's loaded)
 - **Node.js 22** — only needed for `npm run dev` (hot-reload frontend dev); production builds happen in Docker
 
 A JDK is **not** required. Maven builds run inside Docker containers.
@@ -22,24 +21,20 @@ git clone <repo-url> && cd proj-agi
 cp .env.example .env
 # Edit .env: change every password and set JWT_SECRET to a random 32+ char string.
 
-# 2. Get the movie dataset (downloads + filters IMDb data, ~1-2 min, first run only)
-just movies-seed
-
-# 3. Start everything
+# 2. Start everything (movie catalog loads automatically on first startup)
 just start          # builds all images and pulls the LLM model (~1 GB, first run only)
 just ps             # wait until every service shows "healthy"
 
-# 4. Open the app
+# 3. Open the app
 open http://localhost:8080    # or just visit it in a browser
 
-# 5. Verify
+# 4. Verify
 just smoke          # runs end-to-end checks through the gateway
 ```
 
-You can skip step 2 and run `just start` on its own - the app still comes up
-fine, but movie search and "Ask AI" will have an empty catalog to work with
-until you run `just movies-seed` (or `just movies-seed` followed by
-`just restart recommendation-service` if the service is already running).
+The movie catalog (~7k enriched movies with posters, overviews, directors and
+cast) is bundled in the Docker image and loaded into Postgres automatically on
+first startup. No external downloads or scripts needed.
 
 ## Day-to-day commands
 
@@ -50,37 +45,22 @@ until you run `just movies-seed` (or `just movies-seed` followed by
 | `just ps` | Container status and health |
 | `just restart <service>` | Rebuild and restart one service, e.g. `just restart auth-service` |
 | `just logs <service>` | Follow logs (omit service for all) |
-| `just movies-seed` | Download + filter the IMDb dataset, then rebuild recommendation-service so it loads into Postgres |
 | `just smoke` | End-to-end test through the gateway |
 | `just test <service>` | Run Maven tests in Docker, e.g. `just test auth-service` |
 | `just psql auth` | Open psql on a service's database |
 | `just redis` | Open redis-cli |
 | `just clean` | Stop and delete Postgres + Redis data (keeps LLM model and the downloaded dataset) |
-| `just nuke` | Stop and delete EVERYTHING including the LLM model and the downloaded dataset |
+| `just nuke` | Stop and delete EVERYTHING including the LLM model |
 
 ## Movie dataset
 
-recommendation-service's catalog comes from [IMDb's free non-commercial data
-exports](https://developer.imdb.com/non-commercial-datasets/) rather than a
-live API — no key or quota needed, just a one-time download.
+The catalog (~7k movies) is a pre-built enriched CSV
+(`dataset/movies_enriched.csv`) bundled into recommendation-service's Docker
+image at build time. `MovieDataLoader` bulk-inserts it into the `movies` table
+on first startup (no-op if the table already has rows). See `dataset/README.md`.
 
-```bash
-just movies-seed                    # ~9-12k movies with 5000+ votes (default threshold)
-just movies-seed min_votes=20000    # smaller, higher-rated catalog
-```
-
-This downloads `title.basics.tsv.gz` + `title.ratings.tsv.gz` into
-`dataset/raw/`, filters them down to a small `movies.csv` (see
-`dataset/README.md` for the details), and rebuilds + restarts
-recommendation-service so `MovieDataLoader` picks up the new file on
-startup. It's safe to re-run — the loader only populates the `movies` table
-the first time it's empty, so if you want to refresh the catalog, run
-`just psql movies` and `TRUNCATE movies;` first (or `just clean`, which
-wipes the whole Postgres volume).
-
-IMDb's non-commercial datasets are for personal/non-commercial use, which
-this project falls under — say so in the report if you reference the data
-source.
+To refresh the catalog: `just psql movies` → `TRUNCATE movies;`, then
+`just restart recommendation-service`.
 
 ## Frontend development
 
