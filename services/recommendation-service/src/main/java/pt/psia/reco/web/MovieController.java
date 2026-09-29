@@ -2,10 +2,7 @@ package pt.psia.reco.web;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 import pt.psia.reco.domain.GenreCatalog;
 import pt.psia.reco.service.MovieService;
 import pt.psia.reco.web.dto.MovieResponse;
@@ -20,6 +17,11 @@ public class MovieController {
 
     public MovieController(MovieService movieService) {
         this.movieService = movieService;
+    }
+
+    @GetMapping("/{id}")
+    public MovieResponse getById(@PathVariable Long id) {
+        return movieService.getById(id);
     }
 
     @GetMapping

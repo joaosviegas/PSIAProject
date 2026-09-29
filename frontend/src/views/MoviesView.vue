@@ -1,6 +1,9 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { api } from '../api'
+import { useLikeDislike } from '../composables/useLikeDislike'
+
+const { likedIds, dislikedIds, loadProfile, toggleLike, toggleDislike } = useLikeDislike()
 
 const query = ref('')
 const genre = ref('')
@@ -68,6 +71,7 @@ watch([query, genre, yearFrom, yearTo, minRating], () => {
 })
 
 onMounted(() => {
+  loadProfile()
   loadGenres()
   search()
 })
@@ -115,6 +119,18 @@ onMounted(() => {
           <p v-if="m.avgRating" class="rating">★ {{ m.avgRating }} ({{ m.numVotes }} votes)</p>
           <p v-if="m.directors" class="meta">Dir: {{ m.directors }}</p>
           <p v-if="m.overview" class="overview">{{ m.overview }}</p>
+          <div class="actions">
+            <button
+              :class="['btn-like', { active: likedIds.has(m.id) }]"
+              @click="toggleLike(m.id)"
+              :title="likedIds.has(m.id) ? 'Remove like' : 'Like'"
+            >&#9829;</button>
+            <button
+              :class="['btn-dislike', { active: dislikedIds.has(m.id) }]"
+              @click="toggleDislike(m.id)"
+              :title="dislikedIds.has(m.id) ? 'Remove dislike' : 'Dislike'"
+            >&#10005;</button>
+          </div>
         </div>
       </div>
     </div>
@@ -208,5 +224,28 @@ onMounted(() => {
 }
 .error {
   color: #b00020;
+}
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+}
+.btn-like, .btn-dislike {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #f5f5f5;
+  cursor: pointer;
+  padding: 0.2rem 0.5rem;
+  font-size: 1rem;
+}
+.btn-like.active {
+  color: #e53935;
+  border-color: #e53935;
+  background: #fce4ec;
+}
+.btn-dislike.active {
+  color: #757575;
+  border-color: #757575;
+  background: #eeeeee;
 }
 </style>

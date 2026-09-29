@@ -56,6 +56,31 @@ ok "JWT accepted by profile-service ($PROFILE_CODE)"
 # Export for later phase checks
 export TOKEN
 
-# --- Phases 3-6 append their checks below this line ---
+# --- Phase 3: profile-service ---
+
+# 7. Create/update profile
+PUT_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/profiles/me" \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"displayName":"Smoke User","bio":"testing","favoriteGenres":["Drama","Sci-Fi"],"favoriteMovieIds":[1,2],"dislikedMovieIds":[3]}')
+[ "$PUT_CODE" = "200" ] || fail "PUT /api/profiles/me returned $PUT_CODE"
+ok "PUT /api/profiles/me -> 200"
+
+# 8. Read profile back
+PROFILE=$(curl -s "$BASE/api/profiles/me" -H "Authorization: Bearer $TOKEN")
+echo "$PROFILE" | grep -q '"Smoke User"' || fail "/api/profiles/me did not return displayName"
+ok "GET /api/profiles/me -> profile matches"
+
+# 9. Browse profiles (excludes self, so may be empty — just check 200)
+BROWSE_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/profiles?genre=Drama" -H "Authorization: Bearer $TOKEN")
+[ "$BROWSE_CODE" = "200" ] || fail "GET /api/profiles?genre=Drama returned $BROWSE_CODE"
+ok "GET /api/profiles?genre=Drama -> 200"
+
+# 10. Internal endpoint reachable inside Docker network
+INTERNAL_CODE=$(docker compose exec -T profile-service curl -s -o /dev/null -w '%{http_code}' \
+  "http://profile-service:8080/internal/profiles?updatedSince=2020-01-01T00:00:00Z")
+[ "$INTERNAL_CODE" = "200" ] || fail "GET /internal/profiles?updatedSince returned $INTERNAL_CODE"
+ok "GET /internal/profiles?updatedSince (internal) -> 200"
+
+# --- Phases 4-6 append their checks below this line ---
 
 echo "All smoke checks passed."
