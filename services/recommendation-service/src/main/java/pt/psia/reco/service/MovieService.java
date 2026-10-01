@@ -9,6 +9,9 @@ import pt.psia.reco.domain.Movie;
 import pt.psia.reco.repository.MovieRepository;
 import pt.psia.reco.web.dto.MovieResponse;
 
+import java.util.Collection;
+import java.util.List;
+
 @Service
 public class MovieService {
 
@@ -32,5 +35,18 @@ public class MovieService {
 
         Page<Movie> page = movieRepository.search(q, g, yearFrom, yearTo, minRating, pageable);
         return page.map(MovieResponse::from);
+    }
+
+    public List<MovieResponse> candidates(List<String> genres, Collection<Long> excludeIds, int limit) {
+        String genresCsv = genres == null ? "" : String.join(",", genres);
+        return movieRepository.findCandidates(genresCsv, limit + excludeIds.size()).stream()
+                .filter(m -> !excludeIds.contains(m.getId()))
+                .limit(limit)
+                .map(MovieResponse::from)
+                .toList();
+    }
+
+    public List<MovieResponse> byIds(Collection<Long> ids) {
+        return movieRepository.findAllById(ids).stream().map(MovieResponse::from).toList();
     }
 }
