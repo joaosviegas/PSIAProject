@@ -1,0 +1,14 @@
+package pt.psia.agent.client.dto;
+
+import java.util.List;
+
+public record ProfileDto(
+        String userId,
+        String username,
+        String displayName,
+        String bio,
+        List<String> favoriteGenres,
+        List<Long> favoriteMovieIds,
+        List<Long> dislikedMovieIds,
+        String updatedAt
+) {}

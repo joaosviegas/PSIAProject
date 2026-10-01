@@ -87,6 +87,14 @@ genres and a mood, and it asks the LLM to pick from a genre-matched pool of
 IMDb movies pulled from Postgres, falling back to a plain top-rated list if
 the LLM is unavailable.
 
+agent-service builds each user's feed in the background. Every
+`AGENT_INTERVAL_SECONDS` it fetches profiles changed since its last run (plus
+users whose feed was requested but missing), asks the LLM to pick movies from
+their favourite genres (skipping ones they already liked/disliked), adds movies
+liked by similar users, and stores the result in Redis for `FEED_TTL_HOURS`.
+`GET /api/feed` returns the stored feed, or `202 {"status":"pending"}` and
+queues the user for the next run.
+
 ## Team
 
 | Member | Owns |

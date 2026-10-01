@@ -83,4 +83,16 @@ ok "GET /internal/profiles?updatedSince (internal) -> 200"
 
 # --- Phases 4-6 append their checks below this line ---
 
+# --- agent-service ---
+
+# 11. Feed requires a token
+FEED_NOAUTH=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/feed")
+[ "$FEED_NOAUTH" = "401" ] || fail "GET /api/feed without token returned $FEED_NOAUTH"
+ok "GET /api/feed without token -> 401"
+
+# 12. Feed is either ready (200) or queued for the next agent run (202)
+FEED_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/feed" -H "Authorization: Bearer $TOKEN")
+[ "$FEED_CODE" = "200" ] || [ "$FEED_CODE" = "202" ] || fail "GET /api/feed returned $FEED_CODE"
+ok "GET /api/feed -> $FEED_CODE"
+
 echo "All smoke checks passed."
