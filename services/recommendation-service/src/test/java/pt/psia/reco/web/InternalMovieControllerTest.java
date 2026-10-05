@@ -70,4 +70,25 @@ class InternalMovieControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2));
     }
+
+    @Test
+    void personalizedParsesCsvParams() throws Exception {
+        when(movieService.personalized(List.of("Drama"), List.of("Comedy"), List.of(1L, 2L), List.of(3L), 12))
+                .thenReturn(List.of(movie(9, "Parasite")));
+
+        mvc.perform(get("/internal/movies/personalized")
+                        .param("genres", "Drama").param("secondary", "Comedy")
+                        .param("liked", "1,2").param("disliked", "3"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("Parasite"));
+    }
+
+    @Test
+    void discoverWithoutGenresOrExclude() throws Exception {
+        when(movieService.discover(List.of(), Set.of(), 8)).thenReturn(List.of(movie(5, "Heat")));
+
+        mvc.perform(get("/internal/movies/discover"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("Heat"));
+    }
 }

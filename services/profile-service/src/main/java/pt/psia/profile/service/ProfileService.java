@@ -31,6 +31,24 @@ public class ProfileService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found"));
     }
 
+    /**
+     * Returns the caller's profile, creating an empty one (display name = username)
+     * the first time it is asked for. This is what makes every registered user show
+     * up in People and gives the feed agent something to read for a brand-new account.
+     */
+    @Transactional
+    public ProfileResponse getOrCreate(UUID userId, String username) {
+        String name = (username == null || username.isBlank()) ? userId.toString().substring(0, 8) : username;
+        repo.insertIfAbsent(userId, truncate(name, 30), truncate(name, 50));
+        return repo.findById(userId)
+                .map(this::toResponse)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found"));
+    }
+
+    private static String truncate(String s, int max) {
+        return s.length() <= max ? s : s.substring(0, max);
+    }
+
     @Transactional
     public ProfileResponse upsert(UUID userId, String username, ProfileRequest req) {
         var profile = repo.findById(userId).orElse(null);

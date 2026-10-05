@@ -11,7 +11,9 @@ public record Feed(
         String summary,
         boolean aiGenerated,
         List<MovieDto> picks,
-        List<SimilarPick> fromSimilarUsers
+        List<SimilarPick> fromSimilarUsers,
+        /** The profile's updatedAt this feed was built from; a different value means the feed is stale. */
+        String profileVersion
 ) {
     public record SimilarPick(MovieDto movie, List<String> likedBy) {}
 }

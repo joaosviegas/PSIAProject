@@ -2,14 +2,18 @@ package pt.psia.agent.client;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import pt.psia.agent.client.dto.PageDto;
 import pt.psia.agent.client.dto.ProfileDto;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Component
@@ -20,7 +24,19 @@ public class ProfileClient {
     private final RestClient restClient;
 
     public ProfileClient(@Value("${profile-service.url}") String baseUrl) {
-        this.restClient = RestClient.builder().baseUrl(baseUrl).build();
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(Duration.ofSeconds(2));
+        factory.setReadTimeout(Duration.ofSeconds(10));
+        this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
+    }
+
+    /** Empty (instead of an exception) when the user has no profile yet. */
+    public Optional<ProfileDto> find(UUID userId) {
+        try {
+            return Optional.ofNullable(get(userId));
+        } catch (HttpClientErrorException.NotFound e) {
+            return Optional.empty();
+        }
     }
 
     public List<ProfileDto> updatedSince(Instant since) {

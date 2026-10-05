@@ -10,6 +10,10 @@ spring:
       chat:
         options:
           model: ${LLM_MODEL:qwen2.5:1.5b}
+          # Short, steady answers: the reply is ~5 titles + one sentence, so cap generation
+          # (on CPU, generated tokens dominate latency) and keep the sampling tight.
+          num-predict: ${LLM_NUM_PREDICT:200}
+          temperature: ${LLM_TEMPERATURE:0.3}
       init:
         # compose.yaml's llm-init job already pulls the model into the
         # shared volume before this service starts; don't pull again here.
@@ -22,4 +26,6 @@ profile:
 
 # Read by OllamaTimeoutConfig (best-effort — see that class's javadoc).
 llm:
-  timeout-seconds: ${LLM_TIMEOUT_SECONDS:180}
+  timeout-seconds: ${LLM_TIMEOUT_SECONDS:30}
+  # Hard ceiling enforced by LlmClient, independent of the HTTP client's read timeout.
+  interactive-timeout-seconds: ${LLM_INTERACTIVE_TIMEOUT_SECONDS:25}

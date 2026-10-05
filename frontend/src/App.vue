@@ -1,8 +1,16 @@
 <script setup>
+import { watch } from 'vue'
 import { auth } from '@/auth'
+import { api } from '@/api'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+
+// Reading the profile creates an empty one on first call, so every account shows up in People
+// even if its owner never opened the Profile page.
+watch(() => auth.isLoggedIn, (loggedIn) => {
+  if (loggedIn) api.get('/profiles/me').catch(() => {})
+}, { immediate: true })
 
 function logout() {
   auth.logout()

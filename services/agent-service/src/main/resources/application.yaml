@@ -12,6 +12,8 @@ spring:
       chat:
         options:
           model: ${LLM_MODEL:qwen2.5:1.5b}
+          num-predict: ${LLM_NUM_PREDICT:200}
+          temperature: ${LLM_TEMPERATURE:0.3}
       init:
         pull-model-strategy: never
 
@@ -28,7 +30,7 @@ feed:
   ttl-hours: ${FEED_TTL_HOURS:24}
 
 llm:
-  timeout-seconds: ${LLM_TIMEOUT_SECONDS:180}
+  timeout-seconds: ${LLM_TIMEOUT_SECONDS:90}
 
 jwt:
   secret: ${JWT_SECRET}

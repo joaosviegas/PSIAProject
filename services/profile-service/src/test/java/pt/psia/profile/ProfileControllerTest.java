@@ -13,9 +13,16 @@ import pt.psia.profile.config.SecurityConfig;
 import pt.psia.profile.service.ProfileService;
 import pt.psia.profile.web.ProfileController;
 
+import pt.psia.profile.web.dto.ProfileResponse;
+
+import java.util.List;
+
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(ProfileController.class)
@@ -69,4 +76,17 @@ class ProfileControllerTest {
                 .andExpect(status().isUnauthorized());
     }
 
+    @Test
+    void getMeCreatesAnEmptyProfileForNewUsers() throws Exception {
+        var id = java.util.UUID.fromString("00000000-0000-0000-0000-000000000001");
+        when(profileService.getOrCreate(id, "alice")).thenReturn(new ProfileResponse(
+                id.toString(), "alice", "alice", null, List.of(), List.of(), List.of(), "2026-10-05T10:00:00Z"));
+
+        mvc.perform(get("/api/profiles/me")
+                        .with(jwt().jwt(j -> j.subject(id.toString()).claim("username", "alice"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.username").value("alice"))
+                .andExpect(jsonPath("$.favoriteGenres.length()").value(0));
+        verify(profileService).getOrCreate(id, "alice");
+    }
 }

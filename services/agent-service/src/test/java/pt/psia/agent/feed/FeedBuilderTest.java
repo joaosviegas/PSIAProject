@@ -20,6 +20,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class FeedBuilderTest {
@@ -31,11 +32,11 @@ class FeedBuilderTest {
     LlmClient llmClient = mock(LlmClient.class);
     FeedBuilder builder = new FeedBuilder(profileClient, movieClient, llmClient);
 
-    ProfileDto me = new ProfileDto(USER, "me", "Me", "likes space", List.of("Sci-Fi"), List.of(1L), List.of(2L), null);
+    ProfileDto me = new ProfileDto(USER, "me", "Me", "likes space", List.of("Sci-Fi"), List.of(1L), List.of(2L), "2026-10-05T10:00:00Z");
 
     @BeforeEach
     void setUp() {
-        when(movieClient.candidates(eq(List.of("Sci-Fi")), eq(Set.of(1L, 2L)), anyInt()))
+        when(movieClient.personalized(eq(List.of("Sci-Fi")), eq(List.of(1L)), eq(List.of(2L)), anyInt()))
                 .thenReturn(List.of(movie(10, "Arrival"), movie(11, "Alien"), movie(12, "Contact")));
         when(movieClient.byIds(any())).thenAnswer(inv -> ((Collection<Long>) inv.getArgument(0)).stream()
                 .map(id -> movie(id, "Movie " + id)).toList());
@@ -75,6 +76,37 @@ class FeedBuilderTest {
 
         assertThat(feed.fromSimilarUsers()).extracting(p -> p.movie().id()).containsExactly(30L, 20L);
         assertThat(feed.fromSimilarUsers().get(0).likedBy()).containsExactly("Ana", "Bob");
+    }
+
+    @Test
+    void feedRecordsWhichProfileVersionItWasBuiltFrom() {
+        when(llmClient.pickMovies(anyString())).thenReturn(new LlmPicks("Space!", List.of("Arrival")));
+
+        Feed feed = builder.build(me);
+
+        assertThat(feed.profileVersion()).isEqualTo("2026-10-05T10:00:00Z");
+    }
+
+    @Test
+    void similarUsersFailureDoesNotSinkTheFeed() {
+        when(llmClient.pickMovies(anyString())).thenReturn(new LlmPicks("Space!", List.of("Arrival")));
+        when(profileClient.similar(UUID.fromString(USER), 5)).thenThrow(new RuntimeException("profile-service down"));
+
+        Feed feed = builder.build(me);
+
+        assertThat(feed.picks()).extracting(MovieDto::title).containsExactly("Arrival");
+        assertThat(feed.fromSimilarUsers()).isEmpty();
+    }
+
+    @Test
+    void emptyShortlistSkipsTheLlm() {
+        when(movieClient.personalized(any(), any(), any(), anyInt())).thenReturn(List.of());
+
+        Feed feed = builder.build(me);
+
+        assertThat(feed.aiGenerated()).isFalse();
+        assertThat(feed.picks()).isEmpty();
+        verifyNoInteractions(llmClient);
     }
 
     private static MovieDto movie(long id, String title) {

@@ -76,4 +76,31 @@ class RecommendationControllerTest {
                 .andExpect(jsonPath("$.movies[0].title").value("The Shawshank Redemption"))
                 .andExpect(jsonPath("$.aiGenerated").value(true));
     }
+
+    @Test
+    void quickEndpointReturnsHeuristicResultWithoutAi() throws Exception {
+        MovieResponse movie = new MovieResponse(
+                1L, "tt0111161", "The Shawshank Redemption", 1994,
+                List.of("Drama"), new BigDecimal("9.3"), 2_800_000,
+                null, null, null, null, 142);
+        when(recommendationService.quick(any(), any()))
+                .thenReturn(new RecommendationResponse("Best matches for Drama.", List.of(movie), false));
+
+        mvc.perform(post("/api/recommendations/quick")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"genres\":[\"Drama\"]}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.movies[0].title").value("The Shawshank Redemption"))
+                .andExpect(jsonPath("$.aiGenerated").value(false));
+    }
+
+    @Test
+    void quickEmptyRequestIsRejected() throws Exception {
+        mvc.perform(post("/api/recommendations/quick")
+                        .with(jwt())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
+    }
 }

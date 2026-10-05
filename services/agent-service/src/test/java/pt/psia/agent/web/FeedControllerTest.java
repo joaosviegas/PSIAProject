@@ -9,20 +9,19 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import pt.psia.agent.client.dto.MovieDto;
 import pt.psia.agent.config.SecurityConfig;
-import pt.psia.agent.feed.Feed;
-import pt.psia.agent.feed.FeedStore;
+import pt.psia.agent.feed.FeedResponse;
+import pt.psia.agent.feed.FeedService;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Optional;
 
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,7 +39,7 @@ class FeedControllerTest {
     JwtDecoder jwtDecoder;
 
     @MockitoBean
-    FeedStore feedStore;
+    FeedService feedService;
 
     @Test
     void withoutTokenIsRejected() throws Exception {
@@ -48,24 +47,42 @@ class FeedControllerTest {
     }
 
     @Test
-    void returnsStoredFeed() throws Exception {
-        when(feedStore.find(USER)).thenReturn(Optional.of(
-                new Feed(USER, Instant.parse("2026-10-01T10:00:00Z"), "Enjoy", true, List.of(), List.of())));
+    void readyFeedIsReturned() throws Exception {
+        when(feedService.get(USER)).thenReturn(new FeedResponse(FeedResponse.READY,
+                Instant.parse("2026-10-01T10:00:00Z"), "Enjoy", true, List.of(), List.of(), List.of()));
 
         mvc.perform(get("/api/feed").with(jwt().jwt(j -> j.subject(USER))))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ready"))
                 .andExpect(jsonPath("$.summary").value("Enjoy"))
                 .andExpect(jsonPath("$.aiGenerated").value(true));
-        verify(feedStore, never()).markPending(any());
     }
 
     @Test
-    void missingFeedIsMarkedPending() throws Exception {
-        when(feedStore.find(USER)).thenReturn(Optional.empty());
+    void newAccountIsAskedForPreferencesInsteadOfGettingAnEmptyFeed() throws Exception {
+        when(feedService.get(USER)).thenReturn(FeedResponse.needsPreferences());
 
         mvc.perform(get("/api/feed").with(jwt().jwt(j -> j.subject(USER))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("needs_preferences"))
+                .andExpect(jsonPath("$.picks.length()").value(0));
+    }
+
+    @Test
+    void refreshReturnsImmediatelyAndStartsTheBuild() throws Exception {
+        mvc.perform(post("/api/feed/refresh").with(jwt().jwt(j -> j.subject(USER))))
                 .andExpect(status().isAccepted())
-                .andExpect(jsonPath("$.status").value("pending"));
-        verify(feedStore).markPending(USER);
+                .andExpect(jsonPath("$.status").value("building"));
+        verify(feedService).refresh(USER);
+    }
+
+    @Test
+    void discoverReturnsMovies() throws Exception {
+        when(feedService.discover(USER)).thenReturn(List.of(
+                new MovieDto(5L, null, "Heat", 1995, List.of("Crime"), null, null, null, null, null, null, null)));
+
+        mvc.perform(get("/api/feed/discover").with(jwt().jwt(j -> j.subject(USER))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].title").value("Heat"));
     }
 }

@@ -22,21 +22,40 @@ public class RecommendationController {
         this.recommendationService = recommendationService;
     }
 
+    /** AI-curated (LLM re-ranks a taste-aware shortlist). Bounded by a hard time ceiling, falls back to the heuristic. */
     @PostMapping
     public ResponseEntity<RecommendationResponse> recommend(
             @Valid @RequestBody RecommendationRequest request,
             @AuthenticationPrincipal Jwt jwt
     ) {
+        if (isEmpty(request)) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(recommendationService.recommend(request, bearer(jwt)));
+    }
+
+    /** Instant taste-aware ranking, no LLM. The UI shows it right away while the AI call is still running. */
+    @PostMapping("/quick")
+    public ResponseEntity<RecommendationResponse> quick(
+            @Valid @RequestBody RecommendationRequest request,
+            @AuthenticationPrincipal Jwt jwt
+    ) {
+        if (isEmpty(request)) {
+            return ResponseEntity.badRequest().build();
+        }
+        return ResponseEntity.ok(recommendationService.quick(request, bearer(jwt)));
+    }
+
+    private static boolean isEmpty(RecommendationRequest request) {
         boolean hasGenres = request.genres() != null && !request.genres().isEmpty();
         boolean hasMood = request.mood() != null && !request.mood().isBlank();
         boolean hasNotes = request.notes() != null && !request.notes().isBlank();
-        if (!hasGenres && !hasMood && !hasNotes) {
-            return ResponseEntity.badRequest().build();
-        }
+        return !hasGenres && !hasMood && !hasNotes;
+    }
 
-        // jwt is only null if this somehow ran unauthenticated, which the
-        // security config's anyRequest().authenticated() rule prevents.
-        String bearerToken = (jwt != null) ? "Bearer " + jwt.getTokenValue() : null;
-        return ResponseEntity.ok(recommendationService.recommend(request, bearerToken));
+    // jwt is only null if this somehow ran unauthenticated, which the
+    // security config's anyRequest().authenticated() rule prevents.
+    private static String bearer(Jwt jwt) {
+        return jwt != null ? "Bearer " + jwt.getTokenValue() : null;
     }
 }

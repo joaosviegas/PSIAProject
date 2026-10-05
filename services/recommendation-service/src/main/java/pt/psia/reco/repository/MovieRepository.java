@@ -53,4 +53,37 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
             LIMIT :limit
             """, nativeQuery = true)
     List<Movie> findCandidates(@Param("genresCsv") String genresCsv, @Param("limit") int limit);
+
+    /**
+     * Scoring pool: movies overlapping the given genres (exact tag match, so "Music" doesn't
+     * pull in "Musical"), best IMDb-style weighted rating first. {@code genresCsv = ''} means any genre.
+     * {@code excludeCsv} is a comma-separated id list ('' = nothing excluded).
+     */
+    @Query(value = """
+            SELECT * FROM movies m
+            WHERE (:genresCsv = '' OR string_to_array(m.genres, ';') && string_to_array(:genresCsv, ','))
+              AND m.id <> ALL (CAST(string_to_array(:excludeCsv, ',') AS bigint[]))
+            ORDER BY (CAST(COALESCE(m.num_votes, 0) AS float8) / (COALESCE(m.num_votes, 0) + 2500)) * COALESCE(m.avg_rating, 0)
+                   + (CAST(2500 AS float8) / (COALESCE(m.num_votes, 0) + 2500)) * 6.5 DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Movie> findPool(@Param("genresCsv") String genresCsv,
+                         @Param("excludeCsv") String excludeCsv,
+                         @Param("limit") int limit);
+
+    /** Random movies from the chosen genres only — the "discover" half of the feed. */
+    @Query(value = """
+            SELECT * FROM movies m
+            WHERE (:genresCsv = '' OR string_to_array(m.genres, ';') && string_to_array(:genresCsv, ','))
+              AND m.id <> ALL (CAST(string_to_array(:excludeCsv, ',') AS bigint[]))
+              AND COALESCE(m.num_votes, 0) >= :minVotes
+              AND COALESCE(m.avg_rating, 0) >= :minRating
+            ORDER BY random()
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Movie> findRandom(@Param("genresCsv") String genresCsv,
+                           @Param("excludeCsv") String excludeCsv,
+                           @Param("minVotes") int minVotes,
+                           @Param("minRating") double minRating,
+                           @Param("limit") int limit);
 }

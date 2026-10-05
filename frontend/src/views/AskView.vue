@@ -2,8 +2,9 @@
 import { ref, onMounted } from 'vue'
 import { api } from '../api'
 import { useLikeDislike } from '../composables/useLikeDislike'
+import MovieCard from '../components/MovieCard.vue'
 
-const { likedIds, dislikedIds, loadProfile, toggleLike, toggleDislike } = useLikeDislike()
+const { likedIds, dislikedIds, profileData, loadProfile, toggleLike, toggleDislike } = useLikeDislike()
 
 const MOODS = [
   'Something uplifting', 'Something intense', 'Something to relax to',
@@ -15,9 +16,11 @@ const selectedGenres = ref([])
 const mood = ref('')
 const notes = ref('')
 
-const loading = ref(false)
+const loading = ref(false)   // waiting for the instant results
+const refining = ref(false)  // instant results are on screen, the AI is still working
 const error = ref('')
 const result = ref(null)
+let requestId = 0
 
 async function loadGenres() {
   try {
@@ -37,31 +40,54 @@ function toggleGenre(g) {
   }
 }
 
+// Two calls in parallel: /quick answers in milliseconds (taste-aware ranking, no LLM) and is shown
+// right away; /recommendations is the same shortlist curated by the AI and replaces it when ready.
 async function submit() {
   if (selectedGenres.value.length === 0 && !mood.value && !notes.value.trim()) {
     error.value = 'Pick at least one genre, a mood, or add a note.'
     return
   }
 
+  const id = ++requestId
+  const body = {
+    genres: selectedGenres.value,
+    mood: mood.value,
+    notes: notes.value.trim() || null,
+  }
   loading.value = true
+  refining.value = true
   error.value = ''
   result.value = null
+
+  const aiCall = api.post('/recommendations', body).then(data => ({ data }), err => ({ err }))
+
   try {
-    const data = await api.post('/recommendations', {
-      genres: selectedGenres.value,
-      mood: mood.value,
-      notes: notes.value.trim() || null,
-    })
-    result.value = data
+    const quick = await api.post('/recommendations/quick', body)
+    if (id !== requestId) return
+    result.value = quick
   } catch (e) {
-    error.value = 'Could not get recommendations right now. Please try again.'
     console.error(e)
   } finally {
-    loading.value = false
+    if (id === requestId) loading.value = false
+  }
+
+  const ai = await aiCall
+  if (id !== requestId) return // a newer question replaced this one
+  refining.value = false
+  if (ai.data) {
+    result.value = ai.data
+  } else if (!result.value) {
+    error.value = 'Could not get recommendations right now. Please try again.'
+    console.error(ai.err)
   }
 }
 
-onMounted(() => { loadGenres(); loadProfile() })
+onMounted(async () => {
+  loadGenres()
+  await loadProfile()
+  // Start from the categories saved in the profile; the user can change them for this question.
+  if (selectedGenres.value.length === 0) selectedGenres.value = [...(profileData.value?.favoriteGenres || [])]
+})
 </script>
 
 <template>
@@ -107,37 +133,20 @@ onMounted(() => { loadGenres(); loadProfile() })
       <p v-if="error" class="error">{{ error }}</p>
 
       <button type="submit" :disabled="loading" class="submit-btn">
-        {{ loading ? 'Thinking...' : 'Get recommendations' }}
+        {{ loading ? 'Finding matches...' : 'Get recommendations' }}
       </button>
     </form>
 
     <section v-if="result" class="result">
       <p class="summary">
         {{ result.summary }}
-        <span v-if="!result.aiGenerated" class="fallback-note">(fallback ranking, not AI-generated)</span>
+        <span v-if="!refining && !result.aiGenerated && result.movies.length" class="fallback-note">(ranked by your taste, not AI-curated)</span>
       </p>
+      <p v-if="refining" class="refining">&#10024; The AI is refining these picks...</p>
       <div class="movie-grid">
-        <div v-for="m in result.movies" :key="m.id" class="movie-card">
-          <img v-if="m.posterUrl" :src="m.posterUrl" :alt="m.title" class="poster" />
-          <div class="movie-info">
-            <h3>{{ m.title }} <span v-if="m.startYear">({{ m.startYear }})</span></h3>
-            <p class="genres">{{ m.genres.join(', ') }}</p>
-            <p v-if="m.avgRating" class="rating">★ {{ m.avgRating }}</p>
-            <p v-if="m.overview" class="overview">{{ m.overview }}</p>
-            <div class="actions">
-              <button
-                :class="['btn-like', { active: likedIds.has(m.id) }]"
-                @click="toggleLike(m.id)"
-                :title="likedIds.has(m.id) ? 'Remove like' : 'Like'"
-              >&#9829;</button>
-              <button
-                :class="['btn-dislike', { active: dislikedIds.has(m.id) }]"
-                @click="toggleDislike(m.id)"
-                :title="dislikedIds.has(m.id) ? 'Remove dislike' : 'Dislike'"
-              >&#10005;</button>
-            </div>
-          </div>
-        </div>
+        <MovieCard v-for="m in result.movies" :key="m.id" :movie="m"
+          :liked="likedIds.has(m.id)" :disliked="dislikedIds.has(m.id)"
+          @like="toggleLike(m.id)" @dislike="toggleDislike(m.id)" />
       </div>
     </section>
   </div>
@@ -209,61 +218,9 @@ fieldset {
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
 }
-.movie-card {
-  display: flex;
-  gap: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 0.75rem;
-}
-.poster {
-  width: 80px;
-  height: 120px;
-  object-fit: cover;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-.movie-info {
-  min-width: 0;
-}
-.movie-card h3 {
-  margin: 0 0 0.5rem;
-  font-size: 1rem;
-}
-.genres {
-  font-size: 0.85rem;
-  color: #666;
-}
-.overview {
-  font-size: 0.8rem;
-  color: #444;
-  margin-top: 0.35rem;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.4rem;
-}
-.btn-like, .btn-dislike {
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #f5f5f5;
-  cursor: pointer;
-  padding: 0.2rem 0.5rem;
-  font-size: 1rem;
-}
-.btn-like.active {
-  color: #e53935;
-  border-color: #e53935;
-  background: #fce4ec;
-}
-.btn-dislike.active {
-  color: #757575;
-  border-color: #757575;
-  background: #eeeeee;
+.refining {
+  color: #1976d2;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
 }
 </style>

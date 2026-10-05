@@ -72,7 +72,9 @@ services:
       PROFILE_URL: http://profile-service:8080
       LLM_BASE_URL: http://llm:11434
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:1.5b}
-      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-180}
+      # Interactive ("Ask AI"): past this the user gets the instant ranking instead of waiting.
+      LLM_TIMEOUT_SECONDS: ${RECO_LLM_TIMEOUT_SECONDS:-30}
+      LLM_INTERACTIVE_TIMEOUT_SECONDS: ${RECO_LLM_INTERACTIVE_TIMEOUT_SECONDS:-25}
     depends_on:
       postgres: { condition: service_healthy }
       llm: { condition: service_healthy } # so it doesn't wait for the model to be fully downloaded
@@ -88,7 +90,8 @@ services:
       RECOMMENDATION_URL: http://recommendation-service:8080
       LLM_BASE_URL: http://llm:11434
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:1.5b}
-      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-180}
+      # Background feed builds: nobody is waiting on them (the feed shows instant picks meanwhile).
+      LLM_TIMEOUT_SECONDS: ${AGENT_LLM_TIMEOUT_SECONDS:-90}
       AGENT_INTERVAL_SECONDS: ${AGENT_INTERVAL_SECONDS:-120}
       FEED_TTL_HOURS: ${FEED_TTL_HOURS:-24}
     depends_on:
@@ -137,6 +140,9 @@ services:
   llm:
     image: ollama/ollama:latest
     restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: "24h"     # keep the model in memory: reloading it costs seconds on every cold request
+      OLLAMA_NUM_PARALLEL: "2"     # a background feed build must not block an interactive "Ask AI" call
     volumes:
       - ollama-models:/root/.ollama
     healthcheck:

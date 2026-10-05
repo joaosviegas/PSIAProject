@@ -7,24 +7,39 @@ export function useLikeDislike() {
   const dislikedIds = ref(new Set())
   const profileData = ref(null)
 
-  async function loadProfile() {
-    try {
-      profileData.value = await api.get('/profiles/me')
-      likedIds.value = new Set(profileData.value.favoriteMovieIds || [])
-      dislikedIds.value = new Set(profileData.value.dislikedMovieIds || [])
-    } catch (e) { /* 404 = no profile yet */ }
+  let loading = null
+  let saveChain = Promise.resolve()
+
+  function loadProfile() {
+    loading = api.get('/profiles/me')
+      .then((profile) => {
+        profileData.value = profile
+        likedIds.value = new Set(profile.favoriteMovieIds || [])
+        dislikedIds.value = new Set(profile.dislikedMovieIds || [])
+      })
+      .catch((e) => { console.error('Failed to load profile', e) })
+    return loading
   }
 
-  async function saveProfile() {
-    try {
-      await api.put('/profiles/me', {
-        displayName: profileData.value?.displayName || auth.username,
-        bio: profileData.value?.bio || '',
-        favoriteGenres: profileData.value?.favoriteGenres || [],
-        favoriteMovieIds: [...likedIds.value],
-        dislikedMovieIds: [...dislikedIds.value],
-      })
-    } catch (e) { console.error('Failed to save preference', e) }
+  // Saves are queued so quick clicks can't land out of order, and nothing is ever written
+  // before we know what is already saved: a PUT built from an unloaded profile would
+  // blank the user's favourite genres and bio (and with them, their feed).
+  function saveProfile() {
+    saveChain = saveChain.then(async () => {
+      if (!profileData.value) await (loading ?? loadProfile())
+      if (!profileData.value) return
+      try {
+        const saved = await api.put('/profiles/me', {
+          displayName: profileData.value.displayName || auth.username,
+          bio: profileData.value.bio || '',
+          favoriteGenres: profileData.value.favoriteGenres || [],
+          favoriteMovieIds: [...likedIds.value],
+          dislikedMovieIds: [...dislikedIds.value],
+        })
+        if (saved) profileData.value = saved
+      } catch (e) { console.error('Failed to save preference', e) }
+    })
+    return saveChain
   }
 
   function toggleLike(id) {
@@ -43,5 +58,5 @@ export function useLikeDislike() {
     saveProfile()
   }
 
-  return { likedIds, dislikedIds, loadProfile, toggleLike, toggleDislike }
+  return { likedIds, dislikedIds, profileData, loadProfile, toggleLike, toggleDislike }
 }

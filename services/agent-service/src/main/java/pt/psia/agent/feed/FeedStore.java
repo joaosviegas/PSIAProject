@@ -8,13 +8,11 @@ import tools.jackson.databind.json.JsonMapper;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.Set;
 
 @Component
 public class FeedStore {
 
     private static final String FEED_KEY = "feed:";
-    private static final String PENDING_KEY = "agent:pending";
     private static final String LAST_RUN_KEY = "agent:last-run";
 
     private final StringRedisTemplate redis;
@@ -34,19 +32,6 @@ public class FeedStore {
     public Optional<Feed> find(String userId) {
         return Optional.ofNullable(redis.opsForValue().get(FEED_KEY + userId))
                 .map(json -> jsonMapper.readValue(json, Feed.class));
-    }
-
-    public void markPending(String userId) {
-        redis.opsForSet().add(PENDING_KEY, userId);
-    }
-
-    public Set<String> pending() {
-        Set<String> members = redis.opsForSet().members(PENDING_KEY);
-        return members == null ? Set.of() : members;
-    }
-
-    public void clearPending(String userId) {
-        redis.opsForSet().remove(PENDING_KEY, userId);
     }
 
     public Optional<Instant> lastRun() {

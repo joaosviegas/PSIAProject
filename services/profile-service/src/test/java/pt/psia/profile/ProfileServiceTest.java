@@ -63,6 +63,30 @@ class ProfileServiceTest {
     }
 
     @Test
+    void getOrCreateInsertsEmptyProfileForNewUserAndReturnsIt() {
+        var userId = UUID.randomUUID();
+        var created = new Profile(userId, "alice", "alice", null, null, null, null);
+        when(repo.findById(userId)).thenReturn(Optional.of(created));
+
+        var resp = service.getOrCreate(userId, "alice");
+
+        verify(repo).insertIfAbsent(userId, "alice", "alice");
+        assertEquals("alice", resp.displayName());
+        assertTrue(resp.favoriteGenres().isEmpty());
+    }
+
+    @Test
+    void getOrCreateFallsBackWhenTokenHasNoUsername() {
+        var userId = UUID.fromString("12345678-0000-0000-0000-000000000001");
+        when(repo.findById(userId)).thenReturn(Optional.of(
+                new Profile(userId, "12345678", "12345678", null, null, null, null)));
+
+        service.getOrCreate(userId, null);
+
+        verify(repo).insertIfAbsent(userId, "12345678", "12345678");
+    }
+
+    @Test
     void getProfileNotFound() {
         when(repo.findById(any())).thenReturn(Optional.empty());
         var ex = assertThrows(ResponseStatusException.class,

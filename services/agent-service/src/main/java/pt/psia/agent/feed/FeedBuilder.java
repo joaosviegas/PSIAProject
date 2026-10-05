@@ -19,14 +19,15 @@ import java.util.stream.Collectors;
 public class FeedBuilder {
 
     private static final Logger log = LoggerFactory.getLogger(FeedBuilder.class);
-    private static final int CANDIDATE_POOL_SIZE = 30;
+    // Small on purpose: the candidates are already ranked by taste, and prompt size is most of the LLM latency on CPU.
+    private static final int SHORTLIST_SIZE = 12;
     private static final int PICKS_REQUESTED = 5;
     private static final int LIKED_TITLES_IN_PROMPT = 5;
     private static final int SIMILAR_PROFILES = 5;
     private static final int SIMILAR_PICKS = 6;
     private static final Pattern TRAILING_YEAR = Pattern.compile("\\s*\\(\\d{4}\\)$");
     static final String FALLBACK_SUMMARY =
-            "The AI assistant was unavailable when your feed was built, so here are the top-rated movies in your favourite genres.";
+            "Our AI assistant was busy, so these are the best matches for your taste in the catalog.";
 
     private final ProfileClient profileClient;
     private final MovieClient movieClient;
@@ -42,29 +43,39 @@ public class FeedBuilder {
         Set<Long> seen = new HashSet<>(orEmpty(profile.favoriteMovieIds()));
         seen.addAll(orEmpty(profile.dislikedMovieIds()));
 
-        List<MovieDto> candidates = movieClient.candidates(orEmpty(profile.favoriteGenres()), seen, CANDIDATE_POOL_SIZE);
+        List<MovieDto> candidates = movieClient.personalized(orEmpty(profile.favoriteGenres()),
+                orEmpty(profile.favoriteMovieIds()), orEmpty(profile.dislikedMovieIds()), SHORTLIST_SIZE);
         AiPicks ai = aiPicks(profile, candidates);
 
         Set<Long> excluded = new HashSet<>(seen);
         ai.movies().forEach(m -> excluded.add(m.id()));
-        List<Feed.SimilarPick> fromSimilar = fromSimilarUsers(UUID.fromString(profile.userId()), excluded);
+        List<Feed.SimilarPick> fromSimilar = List.of();
+        try {
+            fromSimilar = fromSimilarUsers(UUID.fromString(profile.userId()), excluded);
+        } catch (Exception e) {
+            // Nice-to-have section: never let it sink the whole feed.
+            log.warn("Similar-users section failed for {}: {}", profile.userId(), e.getMessage());
+        }
 
-        return new Feed(profile.userId(), Instant.now(), ai.summary(), ai.aiGenerated(), ai.movies(), fromSimilar);
+        return new Feed(profile.userId(), Instant.now(), ai.summary(), ai.aiGenerated(), ai.movies(), fromSimilar,
+                profile.updatedAt());
     }
 
     private record AiPicks(String summary, boolean aiGenerated, List<MovieDto> movies) {}
 
     private AiPicks aiPicks(ProfileDto profile, List<MovieDto> candidates) {
         if (candidates.isEmpty()) {
-            return new AiPicks("No new movies match your favourite genres yet — try adding more genres to your profile.",
+            return new AiPicks("No new movies match your categories yet — try adding more to your profile.",
                     false, List.of());
         }
         try {
             LlmPicks llmPicks = llmClient.pickMovies(buildPrompt(profile, candidates));
-            List<MovieDto> movies = llmPicks.picks().stream()
+            List<MovieDto> movies = orEmpty(llmPicks.picks()).stream()
+                    .filter(pick -> pick != null && !pick.isBlank())
                     .map(pick -> matchCandidate(pick, candidates))
                     .flatMap(Optional::stream)
                     .distinct()
+                    .limit(PICKS_REQUESTED)
                     .toList();
             if (!movies.isEmpty()) {
                 return new AiPicks(llmPicks.summary(), true, movies);

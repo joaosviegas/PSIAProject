@@ -22,7 +22,7 @@ public class ProfileController {
 
     @GetMapping("/me")
     public ProfileResponse me(@AuthenticationPrincipal Jwt jwt) {
-        return profileService.getProfile(UUID.fromString(jwt.getSubject()));
+        return profileService.getOrCreate(UUID.fromString(jwt.getSubject()), jwt.getClaimAsString("username"));
     }
 
     @PutMapping("/me")

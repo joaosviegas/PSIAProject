@@ -6,66 +6,46 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import pt.psia.agent.client.ProfileClient;
 import pt.psia.agent.client.dto.ProfileDto;
-import pt.psia.agent.feed.FeedBuilder;
+import pt.psia.agent.feed.FeedService;
 import pt.psia.agent.feed.FeedStore;
 
-import java.time.Duration;
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 
+/**
+ * Pre-warms feeds: profiles changed since the last tick get their AI feed built in the
+ * background, so the next visit is already "ready". Correctness doesn't depend on this
+ * running — {@code GET /api/feed} detects a missing/stale feed and builds it on demand.
+ */
 @Component
 public class FeedAgent {
 
     private static final Logger log = LoggerFactory.getLogger(FeedAgent.class);
 
     private final ProfileClient profileClient;
-    private final FeedBuilder feedBuilder;
+    private final FeedService feedService;
     private final FeedStore feedStore;
 
-    public FeedAgent(ProfileClient profileClient, FeedBuilder feedBuilder, FeedStore feedStore) {
+    public FeedAgent(ProfileClient profileClient, FeedService feedService, FeedStore feedStore) {
         this.profileClient = profileClient;
-        this.feedBuilder = feedBuilder;
+        this.feedService = feedService;
         this.feedStore = feedStore;
     }
 
     @Scheduled(fixedDelayString = "${agent.interval-seconds}", initialDelay = 30, timeUnit = TimeUnit.SECONDS)
     public void tick() {
         Instant start = Instant.now();
-        Map<String, ProfileDto> profiles = new LinkedHashMap<>();
+        List<ProfileDto> updated;
         try {
-            profileClient.updatedSince(feedStore.lastRun().orElse(null))
-                    .forEach(p -> profiles.put(p.userId(), p));
+            updated = profileClient.updatedSince(feedStore.lastRun().orElse(null));
         } catch (Exception e) {
             log.warn("Could not list updated profiles, skipping this tick: {}", e.getMessage());
             return;
         }
 
-        for (String userId : feedStore.pending()) {
-            if (profiles.containsKey(userId)) continue;
-            try {
-                profiles.put(userId, profileClient.get(UUID.fromString(userId)));
-            } catch (Exception e) {
-                // No profile yet (404) or a bad id: nothing to build from, drop it until the user asks again.
-                log.info("Dropping pending user {}: {}", userId, e.getMessage());
-                feedStore.clearPending(userId);
-            }
-        }
-
-        int built = 0;
-        for (ProfileDto profile : profiles.values()) {
-            try {
-                feedStore.save(feedBuilder.build(profile));
-                feedStore.clearPending(profile.userId());
-                built++;
-            } catch (Exception e) {
-                log.warn("Failed to build feed for {}: {}", profile.userId(), e.getMessage());
-            }
-        }
-
+        updated.forEach(feedService::rebuildAsync);
         feedStore.setLastRun(start);
-        log.info("Built {} of {} feeds in {}s", built, profiles.size(), Duration.between(start, Instant.now()).toSeconds());
+        log.info("Queued feed rebuilds for {} updated profiles", updated.size());
     }
 }

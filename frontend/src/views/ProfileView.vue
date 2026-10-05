@@ -71,6 +71,7 @@ async function save() {
       dislikedMovieIds: dislikedIds.value,
     })
     isNew.value = false
+    api.post('/feed/refresh').catch(() => {}) // rebuild the feed now so it is ready when you get there
     success.value = 'Profile saved!'
     setTimeout(() => success.value = '', 3000)
   } catch (e) {
