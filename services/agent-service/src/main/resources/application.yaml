@@ -10,7 +10,8 @@ spring:
     ollama:
       base-url: ${LLM_BASE_URL:http://localhost:11434}
       chat:
-        model: ${LLM_MODEL:qwen2.5:1.5b}
+        options:
+          model: ${LLM_MODEL:qwen2.5:1.5b}
       init:
         pull-model-strategy: never
 

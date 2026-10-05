@@ -13,10 +13,9 @@ import java.util.UUID;
 public interface ProfileRepository extends JpaRepository<Profile, UUID> {
 
     @Query("SELECT DISTINCT p FROM Profile p LEFT JOIN p.favoriteGenres g " +
-           "WHERE p.userId != :callerId " +
-           "AND (:pattern IS NULL OR LOWER(p.displayName) LIKE :pattern " +
-           "     OR LOWER(p.username) LIKE :pattern) " +
-           "AND (:genre IS NULL OR g = :genre)")
+           "WHERE p.userId <> :callerId " +
+           "AND (LOWER(p.displayName) LIKE :pattern OR LOWER(p.username) LIKE :pattern) " +
+           "AND (:genre = '' OR g = :genre)")
     Page<Profile> browse(@Param("callerId") UUID callerId,
                          @Param("pattern") String pattern,
                          @Param("genre") String genre,

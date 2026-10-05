@@ -1,6 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { auth } from '@/auth'
 
 const router = useRouter()
 const username = ref('')
@@ -22,7 +23,21 @@ async function submit() {
       error.value = data.detail || 'Registration failed'
       return
     }
-    router.push('/login')
+
+    // Registration succeeded: log the new user in straight away.
+    const loginRes = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.value, password: password.value }),
+    })
+    const loginData = await loginRes.json().catch(() => ({}))
+    if (!loginRes.ok) {
+      // Account exists but auto-login failed; fall back to the login page.
+      router.push('/login')
+      return
+    }
+    auth.login(loginData.token, loginData.userId, loginData.username)
+    router.push('/')
   } catch (e) {
     error.value = e.message
   } finally {

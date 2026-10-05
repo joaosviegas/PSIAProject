@@ -47,6 +47,10 @@ onMounted(() => { loadGenres(); search() })
 
     <div class="filters">
       <input v-model="query" type="text" placeholder="Search by name..." class="search-input" />
+      <select v-model="genre">
+        <option value="">All genres</option>
+        <option v-for="g in genres" :key="g" :value="g">{{ g }}</option>
+      </select>
     </div>
 
     <p v-if="loading">Loading...</p>

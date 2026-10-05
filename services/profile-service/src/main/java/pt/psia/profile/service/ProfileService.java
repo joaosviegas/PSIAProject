@@ -54,8 +54,9 @@ public class ProfileService {
 
     @Transactional(readOnly = true)
     public PageResponse<ProfileSummary> browse(UUID callerId, String q, String genre, Pageable pageable) {
-        String pattern = q != null && !q.isBlank() ? "%" + q.toLowerCase() + "%" : null;
-        var page = repo.browse(callerId, pattern, genre, pageable);
+        String pattern = "%" + (q == null ? "" : q.trim().toLowerCase()) + "%";
+        String genreFilter = genre == null ? "" : genre.trim();
+        var page = repo.browse(callerId, pattern, genreFilter, pageable);
         var items = page.getContent().stream().map(this::toSummary).toList();
         return new PageResponse<>(items, page.getNumber(), page.getSize(),
                 page.getTotalElements(), page.getTotalPages());

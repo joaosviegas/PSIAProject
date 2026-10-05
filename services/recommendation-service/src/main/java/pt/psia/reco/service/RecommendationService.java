@@ -12,6 +12,7 @@ import pt.psia.reco.web.dto.RecommendationResponse;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.regex.Pattern;
 
 @Service
 public class RecommendationService {
@@ -19,6 +20,8 @@ public class RecommendationService {
     private static final Logger log = LoggerFactory.getLogger(RecommendationService.class);
     private static final int CANDIDATE_POOL_SIZE = 30;
     private static final int PICKS_REQUESTED = 5;
+    // The candidate list shows "Title (Year)", and small models usually copy the year too.
+    private static final Pattern TRAILING_YEAR = Pattern.compile("\\s*\\(\\d{4}\\)\\s*$");
 
     private final MovieRepository movieRepository;
     private final LlmClient llmClient;
@@ -50,16 +53,20 @@ public class RecommendationService {
 
         try {
             LlmPicks llmPicks = llmClient.pickMovies(prompt);
-            List<MovieResponse> movies = llmPicks.picks().stream()
+            List<String> picks = llmPicks == null || llmPicks.picks() == null ? List.of() : llmPicks.picks();
+            List<MovieResponse> movies = picks.stream()
+                    .filter(p -> p != null && !p.isBlank())
                     .map(pick -> matchCandidate(pick, candidates))
                     .flatMap(Optional::stream)
+                    .distinct()
+                    .limit(PICKS_REQUESTED)
                     .map(MovieResponse::from)
                     .toList();
 
             if (!movies.isEmpty()) {
                 return new RecommendationResponse(llmPicks.summary(), movies, true);
             }
-            log.warn("LLM response matched none of the candidates, falling back");
+            log.warn("LLM picks matched none of the candidates, falling back: {}", picks);
         } catch (Exception e) {
             log.warn("LLM call failed, falling back to top-rated candidates: {}", e.getMessage());
         }
@@ -81,7 +88,7 @@ public class RecommendationService {
                 .append(PICKS_REQUESTED)
                 .append(" movies for this user from the CANDIDATE list only ")
                 .append("(never invent a title that isn't in the list). ")
-                .append("Each entry in your \"picks\" list must be copied exactly from a candidate's title.\n\n");
+                .append("Each entry in your \"picks\" list must be copied exactly from a candidate's title, without the year.\n\n");
 
         sb.append("User's requested genres: ")
                 .append(request.genres() == null || request.genres().isEmpty() ? "any" : String.join(", ", request.genres()))
@@ -108,7 +115,8 @@ public class RecommendationService {
     }
 
     private Optional<Movie> matchCandidate(String pickTitle, List<Movie> candidates) {
-        String normalized = pickTitle.trim().toLowerCase(Locale.ROOT);
+        String unquoted = pickTitle.trim().replaceAll("^[\"']+|[\"']+$", "").trim();
+        String normalized = TRAILING_YEAR.matcher(unquoted).replaceFirst("").trim().toLowerCase(Locale.ROOT);
         return candidates.stream()
                 .filter(m -> m.getTitle().toLowerCase(Locale.ROOT).equals(normalized))
                 .findFirst();
