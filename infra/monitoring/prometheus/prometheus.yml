@@ -1,0 +1,37 @@
+# Prometheus scrape config. Targets are compose service names (in Kubernetes they become service DNS names).
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: auth-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["auth-service:8080"]
+
+  - job_name: profile-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["profile-service:8080"]
+
+  - job_name: recommendation-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["recommendation-service:8080"]
+
+  - job_name: agent-service
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["agent-service:8080"]
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis-exporter:9121"]
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

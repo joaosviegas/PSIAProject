@@ -1,5 +1,6 @@
 package pt.psia.agent.feed;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import pt.psia.agent.client.MovieClient;
 import pt.psia.agent.client.ProfileClient;
@@ -26,7 +27,7 @@ class FeedServiceTest {
     MovieClient movieClient = mock(MovieClient.class);
     FeedBuilder feedBuilder = mock(FeedBuilder.class);
     FeedStore feedStore = mock(FeedStore.class);
-    FeedService service = new FeedService(profileClient, movieClient, feedBuilder, feedStore);
+    FeedService service = new FeedService(profileClient, movieClient, feedBuilder, feedStore, new SimpleMeterRegistry());
 
     ProfileDto withGenres = new ProfileDto(USER, "me", "Me", null, List.of("Drama"), List.of(1L), List.of(2L), VERSION);
 

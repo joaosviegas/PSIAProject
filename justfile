@@ -20,6 +20,10 @@ start: _check-env
 infra: _check-env
     docker compose up -d postgres redis llm llm-init
 
+# (Re)start only the monitoring stack: Prometheus, Grafana and the Postgres/Redis exporters
+monitoring: _check-env
+    docker compose up -d prometheus grafana postgres-exporter redis-exporter
+
 # Stop and remove containers (data volumes are kept)
 stop:
     docker compose down

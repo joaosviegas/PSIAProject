@@ -1,5 +1,8 @@
 package pt.psia.agent.feed;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -10,6 +13,7 @@ import pt.psia.agent.client.dto.ProfileDto;
 import pt.psia.agent.llm.LlmClient;
 import pt.psia.agent.llm.LlmPicks;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.regex.Pattern;
@@ -32,14 +36,22 @@ public class FeedBuilder {
     private final ProfileClient profileClient;
     private final MovieClient movieClient;
     private final LlmClient llmClient;
+    private final Timer buildTimer;
+    private final Counter aiBuilds;
+    private final Counter fallbackBuilds;
 
-    public FeedBuilder(ProfileClient profileClient, MovieClient movieClient, LlmClient llmClient) {
+    public FeedBuilder(ProfileClient profileClient, MovieClient movieClient, LlmClient llmClient, MeterRegistry registry) {
         this.profileClient = profileClient;
         this.movieClient = movieClient;
         this.llmClient = llmClient;
+        this.buildTimer = Timer.builder("feed_build")
+                .publishPercentileHistogram().maximumExpectedValue(Duration.ofMinutes(3)).register(registry);
+        this.aiBuilds = Counter.builder("feed_builds_total").tag("result", "ai").register(registry);
+        this.fallbackBuilds = Counter.builder("feed_builds_total").tag("result", "fallback").register(registry);
     }
 
     public Feed build(ProfileDto profile) {
+        Timer.Sample sample = Timer.start();
         Set<Long> seen = new HashSet<>(orEmpty(profile.favoriteMovieIds()));
         seen.addAll(orEmpty(profile.dislikedMovieIds()));
 
@@ -57,6 +69,8 @@ public class FeedBuilder {
             log.warn("Similar-users section failed for {}: {}", profile.userId(), e.getMessage());
         }
 
+        sample.stop(buildTimer);
+        (ai.aiGenerated() ? aiBuilds : fallbackBuilds).increment();
         return new Feed(profile.userId(), Instant.now(), ai.summary(), ai.aiGenerated(), ai.movies(), fromSimilar,
                 profile.updatedAt());
     }

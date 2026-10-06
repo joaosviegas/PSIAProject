@@ -1,5 +1,7 @@
 package pt.psia.agent.agent;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -26,11 +28,17 @@ public class FeedAgent {
     private final ProfileClient profileClient;
     private final FeedService feedService;
     private final FeedStore feedStore;
+    private final Counter okTicks;
+    private final Counter failedTicks;
+    private final Counter profilesQueued;
 
-    public FeedAgent(ProfileClient profileClient, FeedService feedService, FeedStore feedStore) {
+    public FeedAgent(ProfileClient profileClient, FeedService feedService, FeedStore feedStore, MeterRegistry registry) {
         this.profileClient = profileClient;
         this.feedService = feedService;
         this.feedStore = feedStore;
+        this.okTicks = Counter.builder("agent_ticks_total").tag("result", "ok").register(registry);
+        this.failedTicks = Counter.builder("agent_ticks_total").tag("result", "error").register(registry);
+        this.profilesQueued = Counter.builder("agent_profiles_queued_total").register(registry);
     }
 
     @Scheduled(fixedDelayString = "${agent.interval-seconds}", initialDelay = 30, timeUnit = TimeUnit.SECONDS)
@@ -40,12 +48,15 @@ public class FeedAgent {
         try {
             updated = profileClient.updatedSince(feedStore.lastRun().orElse(null));
         } catch (Exception e) {
+            failedTicks.increment();
             log.warn("Could not list updated profiles, skipping this tick: {}", e.getMessage());
             return;
         }
 
         updated.forEach(feedService::rebuildAsync);
         feedStore.setLastRun(start);
+        okTicks.increment();
+        profilesQueued.increment(updated.size());
         log.info("Queued feed rebuilds for {} updated profiles", updated.size());
     }
 }

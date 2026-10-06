@@ -1,5 +1,6 @@
 package pt.psia.profile;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
@@ -22,7 +23,7 @@ class ProfileServiceTest {
     @BeforeEach
     void setUp() {
         repo = mock(ProfileRepository.class);
-        service = new ProfileService(repo);
+        service = new ProfileService(repo, new SimpleMeterRegistry());
     }
 
     @Test

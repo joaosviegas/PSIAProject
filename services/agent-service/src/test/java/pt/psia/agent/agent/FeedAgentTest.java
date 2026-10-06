@@ -1,5 +1,6 @@
 package pt.psia.agent.agent;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 import pt.psia.agent.client.ProfileClient;
 import pt.psia.agent.client.dto.ProfileDto;
@@ -18,7 +19,7 @@ class FeedAgentTest {
     ProfileClient profileClient = mock(ProfileClient.class);
     FeedService feedService = mock(FeedService.class);
     FeedStore feedStore = mock(FeedStore.class);
-    FeedAgent agent = new FeedAgent(profileClient, feedService, feedStore);
+    FeedAgent agent = new FeedAgent(profileClient, feedService, feedStore, new SimpleMeterRegistry());
 
     @Test
     void queuesRebuildsForUpdatedProfilesAndAdvancesLastRun() {

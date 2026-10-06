@@ -47,6 +47,7 @@ first startup. No external downloads or scripts needed.
 | `just logs <service>` | Follow logs (omit service for all) |
 | `just smoke` | End-to-end test through the gateway |
 | `just test <service>` | Run Maven tests in Docker, e.g. `just test auth-service` |
+| `just monitoring` | (Re)start only Prometheus, Grafana and the exporters |
 | `just psql auth` | Open psql on a service's database |
 | `just redis` | Open redis-cli |
 | `just clean` | Stop and delete Postgres + Redis data (keeps LLM model and the downloaded dataset) |
@@ -80,6 +81,9 @@ Requires the backend to be running (`just start`).
 | recommendation-service | `/api/movies/*`, `/api/recommendations` | Postgres db `movies` + Ollama |
 | agent-service | `/api/feed/*` | Redis + Ollama |
 | llm (Ollama) | internal | model volume |
+| prometheus | `http://localhost:9090` | metrics volume |
+| grafana | `http://localhost:3000` | dashboards volume |
+| postgres-exporter, redis-exporter | internal | — |
 
 recommendation-service covers movie search/browse (`GET /api/movies`) and
 the "Ask AI" recommendation flow (`POST /api/recommendations`): pick some
@@ -94,6 +98,43 @@ their favourite genres (skipping ones they already liked/disliked), adds movies
 liked by similar users, and stores the result in Redis for `FEED_TTL_HOURS`.
 `GET /api/feed` returns the stored feed, or `202 {"status":"pending"}` and
 queues the user for the next run.
+
+## Monitoring
+
+`just start` also brings up the monitoring stack:
+
+- **Prometheus** (`http://localhost:9090`) scrapes every 15s: `/actuator/prometheus` on the four
+  Spring services, `postgres-exporter` and `redis-exporter`. Config: `infra/monitoring/prometheus/prometheus.yml`.
+- **Grafana** (`http://localhost:3000`, user `admin`, password `GRAFANA_ADMIN_PASSWORD` from `.env`)
+  opens on the provisioned **PSIA Movie Hub** dashboard (`infra/monitoring/grafana/`).
+
+Dashboard sections:
+
+| Section | What it shows |
+|---|---|
+| Overview | Targets up/down, request rate, p95 latency, 4xx/5xx rate per service |
+| Endpoints | Request rate and p95 latency per endpoint (filter by service) |
+| AI / LLM | LLM calls by outcome, LLM p95/avg latency, recommendations by mode, AI success ratio |
+| Background agent | Feed builds (ai/fallback/failed), build duration, builds in progress, feed requests by status, agent ticks |
+| Users | Registrations, logins (success/failure), profile updates |
+| JVM & connection pools | Heap, CPU, threads, GC pauses, Hikari DB connections |
+| Data stores | Postgres/Redis up, connections and transactions per database, Redis keys and memory |
+
+Custom application metrics (on top of Spring Boot's HTTP/JVM/Hikari metrics):
+
+| Metric | Service | Labels |
+|---|---|---|
+| `llm_request_seconds` (histogram) | recommendation, agent | `outcome` = success / timeout / error |
+| `recommendations_total` | recommendation | `mode` = ai / fallback / quick / cached |
+| `feed_build_seconds` (histogram) | agent | — |
+| `feed_builds_total` | agent | `result` = ai / fallback / failed |
+| `feed_builds_in_progress` (gauge) | agent | — |
+| `feed_requests_total` | agent | `status` = ready / building / needs_preferences |
+| `agent_ticks_total`, `agent_profiles_queued_total` | agent | `result` = ok / error |
+| `auth_registrations_total`, `auth_logins_total` | auth | `result` = success / failure |
+| `profile_updates_total` | profile | — |
+
+Actuator endpoints are not routed by the gateway; only Prometheus reaches them over the internal network.
 
 ## Team
 

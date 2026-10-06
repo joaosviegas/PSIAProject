@@ -1,5 +1,7 @@
 package pt.psia.profile.service;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -19,9 +21,11 @@ import java.util.*;
 public class ProfileService {
 
     private final ProfileRepository repo;
+    private final Counter updatesCounter;
 
-    public ProfileService(ProfileRepository repo) {
+    public ProfileService(ProfileRepository repo, MeterRegistry registry) {
         this.repo = repo;
+        this.updatesCounter = Counter.builder("profile_updates_total").register(registry);
     }
 
     @Transactional(readOnly = true)
@@ -67,6 +71,7 @@ public class ProfileService {
             profile.setUpdatedAt(Instant.now());
         }
         repo.save(profile);
+        updatesCounter.increment();
         return toResponse(profile);
     }
 

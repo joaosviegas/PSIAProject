@@ -1,5 +1,7 @@
 package pt.psia.reco.service;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -38,11 +40,20 @@ public class RecommendationService {
     private final LlmClient llmClient;
     private final ProfileClient profileClient;
     private final TtlCache<String, RecommendationResponse> cache = new TtlCache<>(200, Duration.ofMinutes(2));
+    private final Counter aiCounter;
+    private final Counter fallbackCounter;
+    private final Counter quickCounter;
+    private final Counter cachedCounter;
 
-    public RecommendationService(MovieService movieService, LlmClient llmClient, ProfileClient profileClient) {
+    public RecommendationService(MovieService movieService, LlmClient llmClient, ProfileClient profileClient,
+                                 MeterRegistry registry) {
         this.movieService = movieService;
         this.llmClient = llmClient;
         this.profileClient = profileClient;
+        this.aiCounter = Counter.builder("recommendations_total").tag("mode", "ai").register(registry);
+        this.fallbackCounter = Counter.builder("recommendations_total").tag("mode", "fallback").register(registry);
+        this.quickCounter = Counter.builder("recommendations_total").tag("mode", "quick").register(registry);
+        this.cachedCounter = Counter.builder("recommendations_total").tag("mode", "cached").register(registry);
     }
 
     private record Shortlist(List<MovieResponse> movies, List<String> genres, Optional<ProfileSnapshot> profile) {
@@ -51,6 +62,7 @@ public class RecommendationService {
     /** Instant, no LLM. */
     public RecommendationResponse quick(RecommendationRequest request, String bearerToken) {
         Shortlist shortlist = shortlist(request, bearerToken);
+        quickCounter.increment();
         return heuristic(request, shortlist);
     }
 
@@ -63,11 +75,13 @@ public class RecommendationService {
         String cacheKey = cacheKey(request, bearerToken);
         RecommendationResponse cached = cache.get(cacheKey);
         if (cached != null) {
+            cachedCounter.increment();
             return cached;
         }
 
         Shortlist shortlist = shortlist(request, bearerToken);
         if (shortlist.movies().isEmpty()) {
+            fallbackCounter.increment();
             return heuristic(request, shortlist);
         }
 
@@ -87,6 +101,7 @@ public class RecommendationService {
                         ? describe(request, shortlist) : llmPicks.summary();
                 RecommendationResponse response = new RecommendationResponse(summary, movies, true);
                 cache.put(cacheKey, response);
+                aiCounter.increment();
                 return response;
             }
             log.warn("LLM picks matched none of the candidates, falling back: {}", picks);
@@ -96,6 +111,7 @@ public class RecommendationService {
 
         // Ollama is unavailable, too slow, or returned titles we couldn't match.
         RecommendationResponse fallback = heuristic(request, shortlist);
+        fallbackCounter.increment();
         return new RecommendationResponse(
                 "The AI assistant didn't answer in time, so these are the best matches for your taste instead.",
                 fallback.movies(), false);

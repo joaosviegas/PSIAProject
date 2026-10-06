@@ -1,9 +1,12 @@
 package pt.psia.reco.service;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.Timer;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import java.time.Duration;
 import java.util.concurrent.*;
 
 /**
@@ -22,15 +25,18 @@ public class LlmClient {
 
     private final ChatClient chatClient;
     private final long timeoutSeconds;
+    private final MeterRegistry registry;
     private final ExecutorService executor = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "llm-call");
         t.setDaemon(true);
         return t;
     });
 
-    public LlmClient(ChatClient chatClient, @Value("${llm.interactive-timeout-seconds:25}") long timeoutSeconds) {
+    public LlmClient(ChatClient chatClient, @Value("${llm.interactive-timeout-seconds:25}") long timeoutSeconds,
+                     MeterRegistry registry) {
         this.chatClient = chatClient;
         this.timeoutSeconds = timeoutSeconds;
+        this.registry = registry;
     }
 
     /**
@@ -40,9 +46,14 @@ public class LlmClient {
      */
     public LlmPicks pickMovies(String prompt) {
         Future<LlmPicks> call = executor.submit(() -> chatClient.prompt(prompt).call().entity(LlmPicks.class));
+        Timer.Sample sample = Timer.start(registry);
+        String outcome = "error";
         try {
-            return call.get(timeoutSeconds, TimeUnit.SECONDS);
+            LlmPicks picks = call.get(timeoutSeconds, TimeUnit.SECONDS);
+            outcome = "success";
+            return picks;
         } catch (TimeoutException e) {
+            outcome = "timeout";
             call.cancel(true);
             throw new IllegalStateException("LLM did not answer within " + timeoutSeconds + "s", e);
         } catch (ExecutionException e) {
@@ -51,6 +62,9 @@ public class LlmClient {
             call.cancel(true);
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrupted while waiting for the LLM", e);
+        } finally {
+            sample.stop(Timer.builder("llm_request").tag("outcome", outcome)
+                    .publishPercentileHistogram().maximumExpectedValue(Duration.ofMinutes(2)).register(registry));
         }
     }
 

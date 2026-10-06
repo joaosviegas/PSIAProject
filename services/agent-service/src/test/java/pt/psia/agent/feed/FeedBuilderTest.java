@@ -1,5 +1,6 @@
 package pt.psia.agent.feed;
 
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import pt.psia.agent.client.MovieClient;
@@ -30,7 +31,7 @@ class FeedBuilderTest {
     ProfileClient profileClient = mock(ProfileClient.class);
     MovieClient movieClient = mock(MovieClient.class);
     LlmClient llmClient = mock(LlmClient.class);
-    FeedBuilder builder = new FeedBuilder(profileClient, movieClient, llmClient);
+    FeedBuilder builder = new FeedBuilder(profileClient, movieClient, llmClient, new SimpleMeterRegistry());
 
     ProfileDto me = new ProfileDto(USER, "me", "Me", "likes space", List.of("Sci-Fi"), List.of(1L), List.of(2L), "2026-10-05T10:00:00Z");
 

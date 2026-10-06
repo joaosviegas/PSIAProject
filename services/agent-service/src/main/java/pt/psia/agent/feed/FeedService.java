@@ -1,5 +1,8 @@
 package pt.psia.agent.feed;
 
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.Gauge;
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -39,17 +42,24 @@ public class FeedService {
         return t;
     });
     private final Set<String> building = ConcurrentHashMap.newKeySet();
+    private final MeterRegistry registry;
+    private final Counter failedBuilds;
 
-    public FeedService(ProfileClient profileClient, MovieClient movieClient, FeedBuilder feedBuilder, FeedStore feedStore) {
+    public FeedService(ProfileClient profileClient, MovieClient movieClient, FeedBuilder feedBuilder, FeedStore feedStore,
+                       MeterRegistry registry) {
         this.profileClient = profileClient;
         this.movieClient = movieClient;
         this.feedBuilder = feedBuilder;
         this.feedStore = feedStore;
+        this.registry = registry;
+        this.failedBuilds = Counter.builder("feed_builds_total").tag("result", "failed").register(registry);
+        Gauge.builder("feed_builds_in_progress", building, Set::size).register(registry);
     }
 
     public FeedResponse get(String userId) {
         Optional<ProfileDto> found = profileClient.find(UUID.fromString(userId));
         if (found.isEmpty() || !hasPreferences(found.get())) {
+            countRequest(FeedResponse.NEEDS_PREFERENCES);
             return FeedResponse.needsPreferences();
         }
         ProfileDto profile = found.get();
@@ -62,6 +72,7 @@ public class FeedService {
             Set<Long> exclude = new HashSet<>(seen);
             feed.picks().forEach(m -> exclude.add(m.id()));
             List<MovieDto> discover = movieClient.discover(genres(profile), exclude, DISCOVER_SIZE);
+            countRequest(FeedResponse.READY);
             return new FeedResponse(FeedResponse.READY, feed.generatedAt(), feed.summary(), feed.aiGenerated(),
                     feed.picks(), discover, feed.fromSimilarUsers());
         }
@@ -73,6 +84,7 @@ public class FeedService {
         Set<Long> exclude = new HashSet<>(seen);
         quick.forEach(m -> exclude.add(m.id()));
         List<MovieDto> discover = movieClient.discover(genres(profile), exclude, DISCOVER_SIZE);
+        countRequest(FeedResponse.BUILDING);
         return new FeedResponse(FeedResponse.BUILDING, null, null, false, quick, discover, List.of());
     }
 
@@ -100,6 +112,7 @@ public class FeedService {
                 try {
                     feedStore.save(feedBuilder.build(profile));
                 } catch (Exception e) {
+                    failedBuilds.increment();
                     log.warn("Failed to build feed for {}: {}", profile.userId(), e.getMessage());
                 } finally {
                     building.remove(profile.userId());
@@ -108,6 +121,10 @@ public class FeedService {
         } catch (RejectedExecutionException e) {
             building.remove(profile.userId());
         }
+    }
+
+    private void countRequest(String status) {
+        registry.counter("feed_requests_total", "status", status).increment();
     }
 
     boolean hasPreferences(ProfileDto profile) {
