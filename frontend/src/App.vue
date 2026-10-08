@@ -19,18 +19,23 @@ function logout() {
 </script>
 
 <template>
-  <nav v-if="auth.isLoggedIn">
-    <router-link to="/">Feed</router-link> |
-    <router-link to="/ask">Ask AI</router-link> |
-    <router-link to="/movies">Movies</router-link> |
-    <router-link to="/profile">Profile</router-link> |
-    <router-link to="/people">People</router-link> |
-    <button @click="logout">Logout ({{ auth.username }})</button>
-  </nav>
-  <nav v-else>
-    <router-link to="/login">Login</router-link> |
-    <router-link to="/register">Register</router-link>
-  </nav>
+  <header class="site-header">
+    <nav>
+      <router-link to="/" class="logo"><span>PSIA</span> Movies</router-link>
+      <div v-if="auth.isLoggedIn" class="nav-links">
+        <router-link to="/">Feed</router-link>
+        <router-link to="/ask">Ask AI</router-link>
+        <router-link to="/movies">Movies</router-link>
+        <router-link to="/profile">Profile</router-link>
+        <router-link to="/people">People</router-link>
+        <button @click="logout">Logout ({{ auth.username }})</button>
+      </div>
+      <div v-else class="nav-links">
+        <router-link to="/login">Login</router-link>
+        <router-link to="/register">Register</router-link>
+      </div>
+    </nav>
+  </header>
   <main>
     <router-view />
   </main>

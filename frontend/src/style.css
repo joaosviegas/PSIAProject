@@ -1,3 +1,25 @@
+:root {
+  --bg: #131720;
+  --bg-2: #0f1218;
+  --bg-3: #0b0d12;
+  --surface: rgba(122, 128, 141, 0.14);
+  --surface-hover: rgba(122, 128, 141, 0.28);
+  --border: rgba(255, 255, 255, 0.1);
+  --text: #ffffff;
+  --text-muted: #9ca3af;
+  --text-dim: #6b7280;
+  --primary: #0278fd;
+  --primary-hover: #0263d1;
+  --primary-soft: rgba(2, 120, 253, 0.18);
+  --accent: #1ea5fc;
+  --yellow: #facc15;
+  --danger: #e04848;
+  --success: #34d399;
+  --radius: 1rem;
+  --radius-sm: 0.5rem;
+  color-scheme: dark;
+}
+
 *,
 *::before,
 *::after {
@@ -5,60 +27,296 @@
 }
 
 body {
-  font-family: system-ui, sans-serif;
+  font-family: 'Poppins', system-ui, sans-serif;
   margin: 0;
-  padding: 1rem;
-  max-width: 800px;
+  background: var(--bg);
+  background-image: radial-gradient(ellipse 80% 50% at 50% -10%, rgba(2, 120, 253, 0.15), transparent);
+  background-attachment: fixed;
+  color: var(--text);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+main {
+  max-width: 1280px;
   margin-inline: auto;
-  color: #1a1a1a;
+  padding: 1.5rem 1rem 3rem;
 }
 
-nav {
-  margin-bottom: 1.5rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid #ddd;
+h1 {
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0.5rem 0 1rem;
 }
 
-nav a {
-  color: #333;
+h2 {
+  font-size: 1.3rem;
+  font-weight: 600;
+  margin: 0 0 0.75rem;
+}
+
+h2::before {
+  content: '';
+  display: inline-block;
+  width: 4px;
+  height: 1.1em;
+  margin-right: 0.6rem;
+  vertical-align: -0.15em;
+  border-radius: 2px;
+  background: var(--primary);
+}
+
+h3, h4 {
+  font-weight: 600;
+}
+
+a {
+  color: var(--accent);
   text-decoration: none;
 }
 
-nav a.router-link-active {
-  font-weight: bold;
+a:hover {
+  color: var(--text);
 }
 
-nav button {
+/* Header */
+.site-header {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+  background: rgba(19, 23, 32, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border);
+}
+
+.site-header nav {
+  max-width: 1280px;
+  margin-inline: auto;
+  padding: 0.6rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.logo {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+
+.logo span {
+  color: var(--primary);
+}
+
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: var(--surface);
+  overflow-x: auto;
+}
+
+.nav-links a,
+.nav-links button {
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  white-space: nowrap;
   background: none;
   border: none;
-  color: #333;
   cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+.nav-links a:hover,
+.nav-links button:hover {
+  color: var(--text);
+}
+
+.nav-links a.router-link-exact-active {
+  background: var(--text);
+  color: var(--bg);
+}
+
+/* Forms */
+input,
+select,
+textarea {
   font: inherit;
+  font-size: 0.95rem;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.6rem 1.1rem;
+  outline: none;
+  transition: border-color 0.2s, background 0.2s;
 }
 
+textarea {
+  border-radius: var(--radius);
+  resize: vertical;
+}
+
+select option {
+  background: var(--bg);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-dim);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--primary);
+  background: rgba(2, 120, 253, 0.06);
+}
+
+button {
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text);
+  background: var(--surface);
+  border: none;
+  border-radius: 999px;
+  padding: 0.55rem 1.2rem;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.15s, opacity 0.2s;
+}
+
+button:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+button[type='submit'],
+button.primary,
+.auth-page form button {
+  background: var(--primary);
+  color: #fff;
+}
+
+button[type='submit']:hover:not(:disabled),
+button.primary:hover:not(:disabled),
+.auth-page form button:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+fieldset {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.25rem 1.25rem;
+  margin: 0;
+}
+
+legend {
+  padding: 0 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+/* Auth */
 .auth-page {
-  max-width: 360px;
+  max-width: 400px;
+  margin: 4rem auto 0;
+  padding: 2rem;
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
 }
 
-form label {
+.auth-page h1 {
+  margin-top: 0;
+}
+
+.auth-page form label {
   display: block;
-  margin-bottom: 0.75rem;
+  margin-bottom: 1rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 
-form input {
+.auth-page form input {
   display: block;
   width: 100%;
-  margin-top: 0.25rem;
-  padding: 0.4rem;
-  font: inherit;
+  margin-top: 0.35rem;
 }
 
-form button {
-  padding: 0.5rem 1.5rem;
-  font: inherit;
-  cursor: pointer;
+.auth-page form button {
+  width: 100%;
+  padding: 0.7rem;
+  margin-top: 0.5rem;
+}
+
+.auth-page > p {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* Shared bits */
+.chip {
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0.4rem 1rem;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.85rem;
+  backdrop-filter: blur(6px);
+}
+
+.chip.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+}
+
+.movie-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 1.25rem 1rem;
+}
+
+.pagination {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 
 .error {
-  color: #c00;
+  color: var(--danger);
+}
+
+.success {
+  color: var(--success);
+}
+
+.empty {
+  color: var(--text-dim);
+  font-style: italic;
 }

@@ -167,24 +167,31 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.profile-view { max-width: 600px; margin: 0 auto; padding: 1.5rem; }
-form { display: flex; flex-direction: column; gap: 1rem; }
-label { display: flex; flex-direction: column; gap: 0.25rem; }
-input, textarea { padding: 0.5rem; }
-fieldset { border: 1px solid #ddd; border-radius: 4px; padding: 0.75rem; }
-.genre-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-.chip { padding: 0.3rem 0.6rem; border: 1px solid #ccc; border-radius: 12px; background: #f5f5f5; cursor: pointer; }
-.chip.active { background: #1976d2; color: white; border-color: #1976d2; }
-.movie-list { margin-top: 0.5rem; }
-.movie-card { display: flex; gap: 0.75rem; border: 1px solid #ddd; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.5rem; }
-.poster { width: 60px; height: 90px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.profile-view { max-width: 760px; margin-inline: auto; }
+form { display: flex; flex-direction: column; gap: 1.25rem; }
+label { display: flex; flex-direction: column; gap: 0.4rem; color: var(--text-muted); font-size: 0.9rem; }
+.movie-list h3 { margin: 0.5rem 0 0.75rem; }
+.remove-btn { font-size: 0.75rem; padding: 0.3rem 0.8rem; margin-top: 0.35rem; }
+.remove-btn:hover:not(:disabled) { background: var(--danger); }
+button[type="submit"] { align-self: flex-start; padding: 0.65rem 1.6rem; }
+
+.genre-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.movie-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem;
+  margin-bottom: 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  transition: border-color 0.2s;
+}
+.movie-card:hover { border-color: var(--primary); }
+.poster { width: 56px; height: 84px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
 .movie-info { min-width: 0; }
-.movie-info h4 { margin: 0 0 0.25rem; font-size: 0.95rem; }
-.genres { font-size: 0.8rem; color: #666; margin: 0; }
-.rating { font-size: 0.8rem; margin: 0.15rem 0; }
-.remove-btn { font-size: 0.75rem; margin-top: 0.25rem; }
-.hint { font-size: 0.85rem; color: #666; }
-.error { color: #b00020; }
-.success { color: #2e7d32; }
-button[type="submit"] { padding: 0.6rem; font-size: 1rem; }
+.movie-info h4 { margin: 0 0 0.2rem; font-size: 0.95rem; font-weight: 500; }
+.genres { font-size: 0.8rem; color: var(--text-muted); margin: 0; }
+.rating { font-size: 0.8rem; color: var(--yellow); margin: 0.2rem 0; }
+.hint { font-size: 0.85rem; color: var(--text-muted); }
 </style>

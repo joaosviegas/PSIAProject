@@ -174,7 +174,7 @@ onUnmounted(() => clearTimeout(pollTimer))
       <section v-if="visibleDiscover.length">
         <div class="section-head">
           <h2>Discover from your categories</h2>
-          <button :disabled="shuffling" @click="shuffle">{{ shuffling ? '...' : 'Shuffle' }}</button>
+          <button class="primary shuffle-btn" :disabled="shuffling" @click="shuffle">&#8644; {{ shuffling ? '...' : 'Shuffle' }}</button>
         </div>
         <div class="movie-grid">
           <MovieCard v-for="m in visibleDiscover" :key="m.id" :movie="m"
@@ -197,19 +197,27 @@ onUnmounted(() => clearTimeout(pollTimer))
 </template>
 
 <style scoped>
-.feed-view { max-width: 720px; margin: 0 auto; padding: 1.5rem; }
-section { margin-top: 1.5rem; }
-.section-head { display: flex; align-items: center; justify-content: space-between; }
-.generated { color: #666; font-size: 0.85rem; }
-.refining { color: #1976d2; font-size: 0.9rem; }
-.hint { color: #666; font-size: 0.85rem; }
-.empty { color: #999; font-style: italic; }
-.error { color: #b00020; }
-.summary { margin-bottom: 1rem; }
-.fallback-note { color: #999; font-size: 0.85rem; }
-.genre-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1rem 0; }
-.chip { border: 1px solid #ccc; border-radius: 999px; padding: 0.35rem 0.9rem; background: white; cursor: pointer; }
-.chip.active { background: #1976d2; color: white; border-color: #1976d2; }
-.primary { padding: 0.6rem 1.2rem; }
-.movie-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 1rem; }
+section { margin-top: 2.5rem; }
+.section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+.section-head h2 { margin: 0; }
+.shuffle-btn { padding: 0.55rem 1.4rem; box-shadow: 0 4px 16px rgba(2, 120, 253, 0.35); }
+.generated, .hint { color: var(--text-muted); font-size: 0.85rem; }
+.refining {
+  display: inline-block;
+  color: var(--accent);
+  font-size: 0.85rem;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  background: var(--primary-soft);
+}
+.summary { margin-bottom: 1.25rem; color: #d1d5db; max-width: 70ch; }
+.fallback-note { color: var(--text-dim); font-size: 0.85rem; }
+.onboarding {
+  max-width: 720px;
+  padding: 2rem;
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+}
+.genre-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 1.25rem 0; }
 </style>

@@ -2,6 +2,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { api } from '../api'
 import { useLikeDislike } from '../composables/useLikeDislike'
+import MovieCard from '../components/MovieCard.vue'
 
 const { likedIds, dislikedIds, loadProfile, toggleLike, toggleDislike } = useLikeDislike()
 
@@ -111,28 +112,10 @@ onMounted(() => {
     <p v-else-if="movies.length === 0">No movies found.</p>
 
     <div v-else class="movie-grid">
-      <div v-for="m in movies" :key="m.id" class="movie-card">
-        <img v-if="m.posterUrl" :src="m.posterUrl" :alt="m.title" class="poster" />
-        <div class="movie-info">
-          <h3>{{ m.title }} <span v-if="m.startYear">({{ m.startYear }})</span></h3>
-          <p class="genres">{{ m.genres.join(', ') }}</p>
-          <p v-if="m.avgRating" class="rating">★ {{ m.avgRating }} ({{ m.numVotes }} votes)</p>
-          <p v-if="m.directors" class="meta">Dir: {{ m.directors }}</p>
-          <p v-if="m.overview" class="overview">{{ m.overview }}</p>
-          <div class="actions">
-            <button
-              :class="['btn-like', { active: likedIds.has(m.id) }]"
-              @click="toggleLike(m.id)"
-              :title="likedIds.has(m.id) ? 'Remove like' : 'Like'"
-            >&#9829;</button>
-            <button
-              :class="['btn-dislike', { active: dislikedIds.has(m.id) }]"
-              @click="toggleDislike(m.id)"
-              :title="dislikedIds.has(m.id) ? 'Remove dislike' : 'Dislike'"
-            >&#10005;</button>
-          </div>
-        </div>
-      </div>
+      <MovieCard v-for="m in movies" :key="m.id" :movie="m"
+        :note="m.directors ? `Dir: ${m.directors}` : ''"
+        :liked="likedIds.has(m.id)" :disliked="dislikedIds.has(m.id)"
+        @like="toggleLike(m.id)" @dislike="toggleDislike(m.id)" />
     </div>
 
     <div class="pagination" v-if="totalPages > 1">
@@ -144,108 +127,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.movies-view {
-  max-width: 960px;
-  margin: 0 auto;
-  padding: 1.5rem;
-}
-.filters {
-  display: flex;
-  gap: 0.75rem;
-  margin-bottom: 0.75rem;
-}
-.search-input {
-  flex: 1;
-  padding: 0.5rem;
-}
-.filter-select {
-  padding: 0.5rem;
-}
-.filter-small {
-  width: 110px;
-  padding: 0.5rem;
-}
-.movie-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
-  margin-top: 0.75rem;
-}
-.movie-card {
-  display: flex;
-  gap: 0.75rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 0.75rem;
-}
-.poster {
-  width: 80px;
-  height: 120px;
-  object-fit: cover;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-.movie-info {
-  min-width: 0;
-}
-.movie-card h3 {
-  margin: 0 0 0.35rem;
-  font-size: 1rem;
-}
-.genres {
-  font-size: 0.85rem;
-  color: #666;
-}
-.rating {
-  font-size: 0.85rem;
-  margin-top: 0.25rem;
-}
-.meta {
-  font-size: 0.8rem;
-  color: #888;
-  margin-top: 0.25rem;
-}
-.overview {
-  font-size: 0.8rem;
-  color: #444;
-  margin-top: 0.35rem;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  line-clamp: 3;
-  overflow: hidden;
-}
-.pagination {
-  display: flex;
-  gap: 1rem;
-  align-items: center;
-  justify-content: center;
-  margin-top: 1.5rem;
-}
-.error {
-  color: #b00020;
-}
-.actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.4rem;
-}
-.btn-like, .btn-dislike {
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #f5f5f5;
-  cursor: pointer;
-  padding: 0.2rem 0.5rem;
-  font-size: 1rem;
-}
-.btn-like.active {
-  color: #e53935;
-  border-color: #e53935;
-  background: #fce4ec;
-}
-.btn-dislike.active {
-  color: #757575;
-  border-color: #757575;
-  background: #eeeeee;
-}
+.filters { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem; }
+.search-input { flex: 1; min-width: 220px; }
+.filter-small { width: 130px; }
+.movie-grid { margin-top: 1.5rem; }
 </style>

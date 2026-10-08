@@ -153,74 +153,32 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.ask-view {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 1.5rem;
-}
-.subtitle {
-  color: #666;
-  margin-bottom: 1.5rem;
-}
+.ask-view h1 { margin-bottom: 0.25rem; text-align: center; }
+.subtitle { color: var(--text-muted); margin: 0 0 1.5rem; text-align: center; }
 .form {
+  max-width: 760px;
+  margin-inline: auto;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.25rem;
+  padding: 1.75rem;
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
 }
-fieldset {
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  padding: 1rem;
-}
-.genre-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-.chip {
-  border: 1px solid #ccc;
-  border-radius: 999px;
-  padding: 0.35rem 0.9rem;
-  background: white;
-  cursor: pointer;
-}
-.chip.active {
-  background: #333;
-  color: white;
-  border-color: #333;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-.submit-btn {
-  padding: 0.6rem 1.2rem;
-  align-self: flex-start;
-}
-.error {
-  color: #b00020;
-}
-.result {
-  margin-top: 2rem;
-  padding-top: 1.5rem;
-  border-top: 1px solid #ddd;
-}
-.summary {
-  margin-bottom: 1rem;
-}
-.fallback-note {
-  color: #999;
-  font-size: 0.85rem;
-}
-.movie-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1rem;
-}
+.genre-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.field { display: flex; flex-direction: column; gap: 0.4rem; color: var(--text-muted); font-size: 0.9rem; }
+.submit-btn { align-self: flex-start; padding: 0.65rem 1.6rem; }
+.result { margin-top: 2.5rem; }
+.summary { margin-bottom: 1.25rem; color: #d1d5db; max-width: 70ch; }
+.fallback-note { color: var(--text-dim); font-size: 0.85rem; }
 .refining {
-  color: #1976d2;
-  font-size: 0.9rem;
-  margin-bottom: 0.75rem;
+  display: inline-block;
+  color: var(--accent);
+  font-size: 0.85rem;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  margin: 0 0 1.25rem;
 }
 </style>

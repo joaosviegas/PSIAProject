@@ -73,15 +73,19 @@ onMounted(() => { loadGenres(); search() })
 </template>
 
 <style scoped>
-.people-view { max-width: 700px; margin: 0 auto; padding: 1.5rem; }
-.filters { display: flex; gap: 0.75rem; margin-bottom: 1rem; }
-.search-input { flex: 1; padding: 0.5rem; }
-select { padding: 0.5rem; }
-.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; }
-.person-card { border: 1px solid #ddd; border-radius: 8px; padding: 1rem; cursor: pointer; }
-.person-card:hover { background: #f5f5f5; }
-.person-card h3 { margin: 0 0 0.25rem; }
-.username { color: #666; font-size: 0.85rem; margin: 0; }
-.genres { font-size: 0.8rem; color: #888; margin-top: 0.4rem; }
-.pagination { display: flex; gap: 1rem; align-items: center; justify-content: center; margin-top: 1.5rem; }
+.filters { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1.5rem; }
+.search-input { flex: 1; min-width: 220px; }
+.people-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; }
+.person-card {
+  padding: 1.25rem;
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s;
+}
+.person-card:hover { border-color: var(--primary); transform: translateY(-3px); }
+.person-card h3 { margin: 0 0 0.2rem; font-size: 1.05rem; }
+.username { color: var(--text-muted); font-size: 0.85rem; margin: 0; }
+.genres { font-size: 0.8rem; color: var(--accent); margin: 0.6rem 0 0; }
 </style>

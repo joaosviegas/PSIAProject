@@ -108,21 +108,34 @@ onMounted(() => { load(); loadProfile() })
 </template>
 
 <style scoped>
-.person-view { max-width: 600px; margin: 0 auto; padding: 1.5rem; }
-.username { color: #666; }
-.bio { margin: 0.5rem 0; }
-.genre-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
-.chip { padding: 0.3rem 0.6rem; border: 1px solid #ccc; border-radius: 12px; background: #f5f5f5; }
-.error { color: #b00020; }
-.movie-card { display: flex; gap: 0.75rem; border: 1px solid #ddd; border-radius: 8px; padding: 0.75rem; margin-bottom: 0.5rem; }
-.poster { width: 60px; height: 90px; object-fit: cover; border-radius: 4px; flex-shrink: 0; }
+.person-view { max-width: 760px; margin-inline: auto; }
+.person-view h1 { margin-bottom: 0; }
+.username { color: var(--text-muted); margin: 0.2rem 0 1rem; }
+.bio { margin: 0 0 1.5rem; color: #d1d5db; }
+.person-view h3 { margin: 2rem 0 0.75rem; }
+
+.genre-chips { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.movie-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem;
+  margin-bottom: 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  transition: border-color 0.2s;
+}
+.movie-card:hover { border-color: var(--primary); }
+.poster { width: 56px; height: 84px; object-fit: cover; border-radius: 6px; flex-shrink: 0; }
 .movie-info { min-width: 0; }
-.movie-info h4 { margin: 0 0 0.25rem; font-size: 0.95rem; }
-.genres { font-size: 0.8rem; color: #666; margin: 0; }
-.rating { font-size: 0.8rem; margin: 0.15rem 0; }
-.empty { color: #999; font-style: italic; }
-.actions { display: flex; gap: 0.5rem; margin-top: 0.4rem; }
-.btn-like, .btn-dislike { border: 1px solid #ccc; border-radius: 4px; background: #f5f5f5; cursor: pointer; padding: 0.2rem 0.5rem; font-size: 1rem; }
-.btn-like.active { color: #e53935; border-color: #e53935; background: #fce4ec; }
-.btn-dislike.active { color: #757575; border-color: #757575; background: #eeeeee; }
+.movie-info h4 { margin: 0 0 0.2rem; font-size: 0.95rem; font-weight: 500; }
+.genres { font-size: 0.8rem; color: var(--text-muted); margin: 0; }
+.rating { font-size: 0.8rem; color: var(--yellow); margin: 0.2rem 0; }
+.hint { font-size: 0.85rem; color: var(--text-muted); }
+
+.actions { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
+.btn-like, .btn-dislike { width: 2rem; height: 2rem; padding: 0; }
+.btn-like.active { background: var(--danger); }
+.btn-dislike.active { background: #4b5563; }
 </style>
