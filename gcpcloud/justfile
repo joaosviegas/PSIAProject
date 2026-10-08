@@ -1,0 +1,27 @@
+# Management node for GCP deployment.
+# Run from inside gcpcloud/:
+#   just start    — build & run the mgmt container
+#   just mgmt     — open a shell inside it
+#   just stop     — stop the container
+
+set shell := ["bash", "-uc"]
+
+default:
+  @just --list
+
+# Build the mgmt image and start the container.
+# The entire g37 project is mounted at /root/project so you can access
+# both gcpcloud/ (terraform, ansible) and services/ (source code) from inside.
+start:
+  docker build -t mgmt .
+  docker run --rm --name mgmt --hostname mgmt -v "$(cd .. && pwd):/root/project" -d mgmt
+
+# Open a shell in the running mgmt container.
+mgmt:
+  docker exec -it mgmt bash
+
+ps:
+  docker ps
+
+stop:
+  docker stop mgmt

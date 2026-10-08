@@ -1,0 +1,28 @@
+# Ansible inventory for GCP nodes.
+#
+# AFTER running "terraform apply", fill in the public IP addresses
+# from the terraform output. Example:
+#   master    ansible_host=34.76.18.105 ansible_user=ubuntu ansible_connection=ssh
+#   worker1   ansible_host=35.195.194.166 ansible_user=ubuntu ansible_connection=ssh
+
+master    ansible_host=XX.XX.XX.XX ansible_user=ubuntu ansible_connection=ssh
+worker1   ansible_host=XX.XX.XX.XX ansible_user=ubuntu ansible_connection=ssh
+worker2   ansible_host=XX.XX.XX.XX ansible_user=ubuntu ansible_connection=ssh
+worker3   ansible_host=XX.XX.XX.XX ansible_user=ubuntu ansible_connection=ssh
+
+# The mgmt container itself
+[osmgmt]
+localhost ansible_connection=local
+
+# Worker nodes (run application pods)
+[workers]
+worker1
+worker2
+worker3
+
+# All nodes (for playbooks that target everyone)
+[targets]
+master
+worker1
+worker2
+worker3

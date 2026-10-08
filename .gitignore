@@ -8,3 +8,10 @@ flake.lock
 flake.nix
 node_modules/dist/
 dist/
+
+# GCP / Terraform — never commit credentials or state
+gcpcloud/*.json
+gcpcloud/.terraform/
+gcpcloud/.terraform.lock.hcl
+gcpcloud/terraform.tfstate
+gcpcloud/terraform.tfstate.backup
