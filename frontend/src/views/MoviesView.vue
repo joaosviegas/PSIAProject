@@ -15,6 +15,7 @@ const genres = ref([])
 const movies = ref([])
 const page = ref(0)
 const totalPages = ref(0)
+const totalMovies = ref(0)
 const loading = ref(false)
 const error = ref('')
 
@@ -44,6 +45,7 @@ async function search() {
     })
     movies.value = data?.content || []
     totalPages.value = data?.totalPages || 0
+    totalMovies.value = data?.totalElements || 0
   } catch (e) {
     error.value = 'Could not load movies. Please try again.'
     console.error(e)
@@ -80,7 +82,7 @@ onMounted(() => {
 
 <template>
   <div class="movies-view">
-    <h1>Browse movies</h1>
+    <h1>Browse movies <span class="count">{{ totalMovies.toLocaleString() }}</span></h1>
 
     <div class="filters">
       <input
@@ -127,6 +129,16 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.count {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  vertical-align: middle;
+  margin-left: 0.5rem;
+  padding: 0.2rem 0.75rem;
+  border-radius: 999px;
+  background: var(--surface);
+}
 .filters { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem; }
 .search-input { flex: 1; min-width: 220px; }
 .filter-small { width: 130px; }

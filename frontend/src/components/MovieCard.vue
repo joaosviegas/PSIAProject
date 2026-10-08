@@ -1,4 +1,7 @@
 <script setup>
+import { ref } from 'vue'
+import MovieModal from './MovieModal.vue'
+
 defineProps({
   movie: { type: Object, required: true },
   liked: { type: Boolean, default: false },
@@ -6,18 +9,20 @@ defineProps({
   note: { type: String, default: '' },
 })
 defineEmits(['like', 'dislike'])
+
+const open = ref(false)
 </script>
 
 <template>
-  <div class="movie-card">
+  <div class="movie-card" @click="open = true">
     <div class="poster-wrap">
       <img v-if="movie.posterUrl" :src="movie.posterUrl" :alt="movie.title" class="poster" loading="lazy" />
       <div v-else class="poster placeholder">{{ movie.title }}</div>
       <span v-if="movie.avgRating" class="rating">&#9733; {{ movie.avgRating }}</span>
       <div class="actions">
-        <button :class="['btn-like', { active: liked }]" @click="$emit('like')"
+        <button :class="['btn-like', { active: liked }]" @click.stop="$emit('like')"
           :title="liked ? 'Remove like' : 'Like'">&#9829;</button>
-        <button :class="['btn-dislike', { active: disliked }]" @click="$emit('dislike')"
+        <button :class="['btn-dislike', { active: disliked }]" @click.stop="$emit('dislike')"
           :title="disliked ? 'Remove dislike' : 'Dislike'">&#10005;</button>
       </div>
       <p v-if="movie.overview" class="overview">{{ movie.overview }}</p>
@@ -31,11 +36,13 @@ defineEmits(['like', 'dislike'])
       </p>
       <p v-if="note" class="note">{{ note }}</p>
     </div>
+    <MovieModal v-if="open" :movie="movie" :liked="liked" :disliked="disliked"
+      @close="open = false" @like="$emit('like')" @dislike="$emit('dislike')" />
   </div>
 </template>
 
 <style scoped>
-.movie-card { min-width: 0; }
+.movie-card { min-width: 0; cursor: pointer; }
 .poster-wrap {
   position: relative;
   aspect-ratio: 2 / 3;
