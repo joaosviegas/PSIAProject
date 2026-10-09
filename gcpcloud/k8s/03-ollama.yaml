@@ -1,0 +1,69 @@
+# Ollama LLM server + model pull Job.
+#
+# Differs from compose:
+# - hostPath instead of named volume — bare kubeadm has no storage provisioner.
+#   Pinned to worker2 so the ~2 GB model download survives pod restarts.
+# - The model pull (llm-init in compose) is a separate K8s Job here.
+#   It retries until Ollama is up, then exits. Re-applying is a no-op (model cached on disk).
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ollama
+  template:
+    metadata:
+      labels:
+        app: ollama
+    spec:
+      nodeName: worker2
+      containers:
+        - name: ollama
+          image: ollama/ollama:latest
+          env:
+            - name: OLLAMA_KEEP_ALIVE
+              value: "24h"
+            - name: OLLAMA_NUM_PARALLEL
+              value: "2"
+          ports:
+            - containerPort: 11434
+          volumeMounts:
+            - name: models
+              mountPath: /root/.ollama
+      volumes:
+        - name: models
+          hostPath:
+            path: /data/ollama
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+spec:
+  selector:
+    app: ollama
+  ports:
+    - port: 11434
+---
+# One-shot Job: pulls the model into the PVC, then exits.
+# Same role as llm-init in compose. Re-running is a no-op (model is already cached).
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ollama-pull
+spec:
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: pull
+          image: ollama/ollama:latest
+          env:
+            - name: OLLAMA_HOST
+              value: http://ollama:11434
+          command: ["ollama", "pull", "qwen2.5:1.5b"]

@@ -1,0 +1,88 @@
+---
+# Install containerd + kubelet + kubeadm + kubectl (v1.28) on every node.
+# Must run on all nodes (master and workers) before creating the cluster.
+- hosts: targets
+  remote_user: ubuntu
+  become: yes
+  become_method: sudo
+  become_user: root
+  gather_facts: yes
+  connection: ssh
+
+  tasks:
+    - name: Create containerd config file
+      file:
+        path: "/etc/modules-load.d/containerd.conf"
+        state: touch
+
+    - name: Load overlay and br_netfilter modules for containerd
+      blockinfile:
+        path: "/etc/modules-load.d/containerd.conf"
+        block: |
+          overlay
+          br_netfilter
+
+    - name: Activate the modules now (without reboot)
+      shell: |
+        sudo modprobe overlay
+        sudo modprobe br_netfilter
+
+    - name: Create sysctl config for Kubernetes networking
+      file:
+        path: "/etc/sysctl.d/99-kubernetes-cri.conf"
+        state: touch
+
+    - name: Enable IP forwarding and bridge netfilter
+      blockinfile:
+        path: "/etc/sysctl.d/99-kubernetes-cri.conf"
+        block: |
+          net.bridge.bridge-nf-call-iptables = 1
+          net.ipv4.ip_forward = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+
+    - name: Apply sysctl settings
+      command: sudo sysctl --system
+
+    - name: Install and configure containerd
+      shell: |
+        sudo apt-get update && sudo apt-get install -y containerd
+        sudo mkdir -p /etc/containerd
+        sudo containerd config default | sudo tee /etc/containerd/config.toml
+        sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+        sudo systemctl restart containerd
+
+    - name: Disable swap (Kubernetes requirement)
+      shell: |
+        sudo swapoff -a
+        sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+
+    - name: Add Kubernetes apt repo key
+      shell: |
+        sudo mkdir -p /etc/apt/keyrings
+        sudo apt-get update && sudo apt-get install -y apt-transport-https curl
+        sudo curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+    - name: Create Kubernetes apt sources file
+      file:
+        path: "/etc/apt/sources.list.d/kubernetes.list"
+        state: touch
+
+    - name: Add Kubernetes apt repo
+      blockinfile:
+        path: "/etc/apt/sources.list.d/kubernetes.list"
+        block: |
+          deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /
+
+    - name: Install kubelet, kubeadm, kubectl and pin their versions
+      shell: |
+        sudo apt-get update
+        sudo apt-get install -y kubelet kubeadm kubectl
+        sudo apt-mark hold kubelet kubeadm kubectl
+
+    - name: Verify kubectl is installed
+      command: kubectl version --client
+      register: kubectl_version
+      changed_when: false
+
+    - debug:
+        msg: "{{ kubectl_version.stdout }}"

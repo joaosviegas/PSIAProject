@@ -1,0 +1,26 @@
+---
+# Deploy the g37 application on the Kubernetes cluster.
+# Copies all manifests from gcpcloud/k8s/ to the master and applies them.
+# Run after ansible-workers-join.yml.
+- hosts: master
+  become: yes
+  become_user: root
+  become_method: sudo
+
+  tasks:
+    - name: Copy all K8s manifests to master
+      copy:
+        src: k8s/
+        dest: /home/ubuntu/k8s/
+        mode: 0644
+
+    - name: Apply all manifests
+      shell: kubectl apply -f /home/ubuntu/k8s/
+
+    - name: Show pod status
+      shell: kubectl get pods -n default
+      register: pods
+      changed_when: false
+
+    - debug:
+        msg: "{{ pods.stdout }}"

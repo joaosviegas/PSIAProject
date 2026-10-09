@@ -1,0 +1,54 @@
+# Gateway: nginx serving the Vue SPA + reverse proxy for /api/*.
+# Exposed as NodePort 30080, access the app at http://<any-worker-ip>:30080
+#
+# Differs from compose:
+# - *_UPSTREAM env vars use full K8s DNS names (auth-service.default.svc.cluster.local:8080).
+#   nginx's resolver directive ignores /etc/resolv.conf search domains so short names won't work.
+# - NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 still works: the nginx Docker image reads the pod's
+#   /etc/resolv.conf (which has the kube-dns IP) and sets NGINX_LOCAL_RESOLVERS automatically.
+# - NodePort instead of host port mapping — the firewall rule in terraform already opens 30000-32767.
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gateway
+  template:
+    metadata:
+      labels:
+        app: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: joaosviegas/g37-gateway:latest # already pushed to Docker Hub
+          imagePullPolicy: Always
+          env:
+            - name: NGINX_ENTRYPOINT_LOCAL_RESOLVERS
+              value: "1"
+            - name: AUTH_UPSTREAM
+              value: auth-service.default.svc.cluster.local:8080
+            - name: PROFILE_UPSTREAM
+              value: profile-service.default.svc.cluster.local:8080
+            - name: RECOMMENDATION_UPSTREAM
+              value: recommendation-service.default.svc.cluster.local:8080
+            - name: AGENT_UPSTREAM
+              value: agent-service.default.svc.cluster.local:8080
+          ports:
+            - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway
+spec:
+  selector:
+    app: gateway
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30080

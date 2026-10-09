@@ -1,0 +1,27 @@
+---
+# Play 1: basic sudo + apt setup on all nodes before anything else runs
+- hosts: targets
+  gather_facts: no
+  remote_user: ubuntu
+  become: yes
+  become_method: sudo
+
+  pre_tasks:
+    - name: Remove requiretty so sudo works non-interactively
+      lineinfile:
+        regexp: "requiretty"
+        dest: /etc/sudoers.d/os_defaults
+        state: absent
+
+    - name: Allow ADMIN group to sudo without a password
+      lineinfile:
+        dest: /etc/sudoers
+        state: present
+        regexp: '^%ADMIN ALL='
+        line: '%ADMIN ALL=(ALL) NOPASSWD: ALL'
+        validate: /usr/sbin/visudo -cf %s
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
