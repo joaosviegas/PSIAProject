@@ -15,6 +15,7 @@ resource "google_compute_instance" "worker" {
         initialize_params {
             # https://console.cloud.google.com/compute/images
             image = "ubuntu-os-cloud/ubuntu-2204-lts"
+            size  = 50  # GB — default 10 GB fills up with Docker images (Ollama alone is ~2 GB)
         }
     }
 
@@ -40,6 +41,7 @@ resource "google_compute_instance" "master" {
     boot_disk {
         initialize_params {
             image = "ubuntu-os-cloud/ubuntu-2204-lts"
+            size  = 50
         }
     }
 
