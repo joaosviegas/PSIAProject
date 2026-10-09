@@ -136,6 +136,197 @@ Custom application metrics (on top of Spring Boot's HTTP/JVM/Hikari metrics):
 
 Actuator endpoints are not routed by the gateway; only Prometheus reaches them over the internal network.
 
+## GCP Cloud Deployment (Kubernetes)
+
+Everything lives under `gcpcloud/`. A Docker-based management container
+(Dockerfile + supervisord) ships terraform, ansible, gcloud, and kubectl so
+you don't need any of those installed locally.
+
+### Prerequisites
+
+- A GCP project with billing enabled and the Compute Engine API active.
+- A GCP service account JSON key (`gcpcloud/YOUR-GCP-KEY.json`).
+  Download it from GCP Console → IAM → Service Accounts → Create Key (JSON).
+- A Docker Hub account with the project images pushed (see **Push images** below).
+
+### 1. Configure
+
+Edit `gcpcloud/terraform-gcp-variables.tf`:
+```hcl
+variable "GCP_PROJECT_ID" { default = "your-gcp-project-id" }
+variable "GCP_MACHINE_TYPE" { default = "n1-standard-2" }  # 7.5 GB RAM — needed for Ollama
+variable "GCP_ZONE" { default = "europe-west1-c" }          # change if zone is out of capacity
+variable "DOCKER_HUB_USER" { default = "your-dockerhub-username" }
+```
+
+Edit `gcpcloud/terraform-gcp-provider.tf` — replace the credentials filename:
+```hcl
+credentials = file("psia-g37.json")   # must match the file you placed in gcpcloud/
+```
+
+### 2. Push images to Docker Hub
+
+Before provisioning, build and push all service images so the K8s nodes can pull them:
+
+```bash
+# from repo root — build and tag each image
+docker build -t <DOCKER_HUB_USER>/g37-auth-service           services/auth-service
+docker build -t <DOCKER_HUB_USER>/g37-profile-service        services/profile-service
+docker build -t <DOCKER_HUB_USER>/g37-recommendation-service services/recommendation-service
+docker build -t <DOCKER_HUB_USER>/g37-agent-service          services/agent-service
+docker build -t <DOCKER_HUB_USER>/g37-gateway                frontend
+
+docker push <DOCKER_HUB_USER>/g37-auth-service
+docker push <DOCKER_HUB_USER>/g37-profile-service
+docker push <DOCKER_HUB_USER>/g37-recommendation-service
+docker push <DOCKER_HUB_USER>/g37-agent-service
+docker push <DOCKER_HUB_USER>/g37-gateway
+```
+
+### 3. Start the management container
+
+```bash
+cd gcpcloud
+just start   # builds the mgmt image and runs the container
+just mgmt    # opens a shell inside it
+```
+
+All following commands run **inside the mgmt container** unless noted otherwise.
+
+### 4. Authenticate with GCP
+
+```bash
+gcloud auth login       # follow the browser link and paste the verification code
+```
+
+### 5. Generate an SSH key (first time only)
+
+```bash
+ssh-keygen -t rsa -b 2048   # press ENTER to all prompts — no passphrase
+```
+
+### 6. Provision infrastructure with Terraform
+
+```bash
+cd /root/project/gcpcloud
+terraform init
+terraform plan
+terraform apply
+```
+
+Terraform creates 1 master + 3 worker VMs (`n1-standard-2`, Ubuntu 22.04) and
+a firewall rule that opens ports 80, 443, 6443 (K8s API), 179 (Calico BGP),
+and the NodePort range 30000–32767.
+
+The final output lists the public IPs:
+```
+master    = <master-ip>
+worker_IPs = ["worker1 = <ip1>", "worker2 = <ip2>", "worker3 = <ip3>"]
+```
+
+If you get a zone capacity error, change `GCP_ZONE` (e.g. `europe-west1-b`) and re-apply.
+
+### 7. Fill in the Ansible inventory and /etc/hosts
+
+Take the IPs from the terraform output and do **both** of the following.
+
+**On the host** — edit `gcpcloud/gcphosts`:
+```
+master    ansible_host=<master-ip>  ansible_user=ubuntu ansible_connection=ssh
+worker1   ansible_host=<ip1>        ansible_user=ubuntu ansible_connection=ssh
+worker2   ansible_host=<ip2>        ansible_user=ubuntu ansible_connection=ssh
+worker3   ansible_host=<ip3>        ansible_user=ubuntu ansible_connection=ssh
+```
+
+**Inside the mgmt container** — add entries to `/etc/hosts` so hostnames resolve:
+```bash
+# run these inside the container (just mgmt)
+echo "<master-ip>  master"  >> /etc/hosts
+echo "<ip1>        worker1" >> /etc/hosts
+echo "<ip2>        worker2" >> /etc/hosts
+echo "<ip3>        worker3" >> /etc/hosts
+```
+
+Because `gcphosts` is mounted from the host (`/root/project/gcpcloud/gcphosts`),
+editing it on the host is enough for ansible. The `/etc/hosts` change is only
+needed for the container session and must be repeated if you restart the container.
+
+### 8. Ansible playbooks 
+
+| Playbook | What it does |
+|---|---|
+| `ansible-gcp-configure-nodes.yml` | Sudoers + base packages on all nodes |
+| `ansible-k8s-install.yml` | containerd, kubelet, kubeadm, kubectl (v1.28) on all nodes |
+| `ansible-create-cluster.yml` | `kubeadm init` on master, Calico CNI, save join command |
+| `ansible-workers-join.yml` | Workers join the cluster using the saved join command |
+| `ansible-deploy-app.yml` | Apply K8s manifests for all project services |
+
+Run them in order from inside the mgmt container:
+```bash
+cd /root/project/gcpcloud
+ansible-playbook ansible-gcp-configure-nodes.yml
+ansible-playbook ansible-k8s-install.yml
+ansible-playbook ansible-create-cluster.yml
+ansible-playbook ansible-workers-join.yml
+ansible-playbook ansible-deploy-app.yml
+```
+
+Verify the cluster on the master:
+```bash
+# ssh into master (see GCP Console > Compute Engine > VM instances > master > SSH)
+sudo kubectl get nodes   # all 4 nodes should show Ready
+sudo kubectl get pods -A # all app pods should show Running
+```
+
+### 9. K8s manifests
+
+All manifests live in `gcpcloud/k8s/` and are applied by `ansible-deploy-app.yml`.
+
+**Before applying — set your secrets and image names:**
+
+1. Edit `gcpcloud/k8s/00-secret.yaml` — replace all `change_me_*` values (same as `.env`).
+2. In manifests `04` through `08`, replace `DOCKER_HUB_USER` with your Docker Hub username
+   (the value you set in `terraform-gcp-variables.tf`).
+
+| File | What it creates |
+|---|---|
+| `00-secret.yaml` | Secret with all passwords and JWT_SECRET |
+| `01-postgres.yaml` | ConfigMap (init script) + PVC (5 Gi) + Deployment + ClusterIP Service |
+| `02-redis.yaml` | PVC (1 Gi) + Deployment + ClusterIP Service |
+| `03-ollama.yaml` | PVC (10 Gi) + Deployment + ClusterIP Service + pull Job |
+| `04-auth-service.yaml` | Deployment + ClusterIP Service |
+| `05-profile-service.yaml` | Deployment + ClusterIP Service |
+| `06-recommendation-service.yaml` | Deployment + ClusterIP Service |
+| `07-agent-service.yaml` | Deployment + ClusterIP Service |
+| `08-gateway.yaml` | Deployment + NodePort Service (port **30080**) |
+| `09-grafana.yaml` | TODO: add playbook to set up monitoring |
+
+**After applying — pull the Ollama model:**
+
+The `ollama-pull` Job (in `03-ollama.yaml`) runs automatically but needs the Ollama pod to be up first. Watch its progress:
+```bash
+# on master
+sudo kubectl get pods -w         # wait for ollama-* pod to be Running
+sudo kubectl logs job/ollama-pull -f  # watch the model download (~1 GB)
+```
+
+Open the app at `http://<any-worker-ip>:30080` once all pods are Running.
+
+### 10. Teardown
+
+```bash
+# from inside mgmt container
+terraform destroy
+```
+
+Check the GCP Console to confirm all VMs are gone, **leaving VMs running costs money**.
+
+Then exit the container and stop it:
+```bash
+# from the host, in gcpcloud/
+just stop
+```
+
 ## Team
 
 | Member | Owns |
