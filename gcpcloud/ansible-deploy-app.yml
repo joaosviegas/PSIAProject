@@ -14,6 +14,23 @@
         dest: /home/ubuntu/k8s/
         mode: 0644
 
+    - name: Copy monitoring config (shared with compose) to master
+      copy:
+        src: ../infra/monitoring/
+        dest: /home/ubuntu/monitoring/
+        mode: 0644
+
+    # Built from the files instead of inlined in a manifest, so there is one copy of each.
+    # Keys are renamed because two of the files are both called prometheus.yml.
+    - name: Create/update the monitoring-config ConfigMap
+      shell: |
+        kubectl create configmap monitoring-config \
+          --from-file=prometheus.yml=/home/ubuntu/monitoring/prometheus/prometheus.yml \
+          --from-file=datasource.yml=/home/ubuntu/monitoring/grafana/provisioning/datasources/prometheus.yml \
+          --from-file=dashboards.yml=/home/ubuntu/monitoring/grafana/provisioning/dashboards/dashboards.yml \
+          --from-file=psia.json=/home/ubuntu/monitoring/grafana/dashboards/psia.json \
+          --dry-run=client -o yaml | kubectl apply -f -
+
     - name: Apply all manifests
       shell: kubectl apply -f /home/ubuntu/k8s/
 

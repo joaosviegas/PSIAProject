@@ -299,7 +299,7 @@ All manifests live in `gcpcloud/k8s/` and are applied by `ansible-deploy-app.yml
 | `06-recommendation-service.yaml` | Deployment + ClusterIP Service |
 | `07-agent-service.yaml` | Deployment + ClusterIP Service |
 | `08-gateway.yaml` | Deployment + NodePort Service (port **30080**) |
-| `09-grafana.yaml` | TODO: add playbook to set up monitoring |
+| `09-monitoring.yaml` | Prometheus + Postgres/Redis exporters (ClusterIP) + Grafana (NodePort 30030). Config comes from `infra/monitoring/` via the `monitoring-config` ConfigMap created by `ansible-deploy-app.yml` |
 
 **After applying — pull the Ollama model:**
 
