@@ -7,13 +7,6 @@ stages:
 variables:
   GIT_SSL_NO_VERIFY: "true"
 
-# ── CI variables to set in GitLab → Settings → CI/CD → Variables ──────────
-# DOCKER_HUB_USER     your Docker Hub username
-# DOCKER_HUB_TOKEN    Docker Hub access token (mark as masked+protected)
-# MASTER_IP           public IP of the GCP master node
-# SSH_PRIVATE_KEY     contents of /root/.ssh/id_rsa from the mgmt container (masked+protected)
-# ──────────────────────────────────────────────────────────────────────────
-
 .maven-cache: &maven-cache
   cache:
     key: maven-$CI_COMMIT_REF_SLUG
@@ -71,12 +64,6 @@ test:agent-service:
 .build-image: &build-image
   stage: build
   image: docker:24
-  services:
-    - name: docker:dind
-      alias: docker
-  variables:
-    DOCKER_HOST: tcp://docker:2375
-    DOCKER_TLS_CERTDIR: ""
   before_script:
     - echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USER" --password-stdin
 
@@ -125,20 +112,14 @@ build:gateway:
 e2e_tests:
   stage: e2e
   image: mcr.microsoft.com/playwright:v1.64.0-jammy
-  services:
-    - name: docker:24-dind
-      alias: docker
   variables:
-    DOCKER_HOST: tcp://docker:2375
-    DOCKER_TLS_CERTDIR: ""
-    DOCKER_DRIVER: overlay2
-    BASE_URL: "http://docker:8080"
+    BASE_URL: "http://localhost:8080"
   before_script:
     - apt-get update && apt-get install -y docker.io docker-compose-v2 curl
     - cp .env.example .env
     - docker compose up -d --build
-    - echo "Waiting for Gateway to be responsive on docker:8080..."
-    - timeout 90s sh -c 'until curl -fsS http://docker:8080/ > /dev/null 2>&1; do sleep 2; done'
+    - echo "Waiting for Gateway to be responsive on localhost:8080..."
+    - timeout 90s sh -c 'until curl -fsS http://localhost:8080/ > /dev/null 2>&1; do sleep 2; done'
     - cd frontend
     - npm ci
   script:
