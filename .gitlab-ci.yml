@@ -117,9 +117,12 @@ e2e_tests:
   before_script:
     - apt-get update && apt-get install -y docker.io docker-compose-v2 curl
     - cp .env.example .env
-    - docker compose up -d --build
-    - echo "Waiting for Gateway to be responsive on localhost:8080..."
-    - timeout 90s sh -c 'until curl -fsS http://localhost:8080/ > /dev/null 2>&1; do sleep 2; done'
+    - docker compose up -d --build --wait postgres redis auth-service profile-service recommendation-service agent-service gateway
+    # Fetch Docker host IP to route to published host port 8080
+    - DOCKER_HOST_IP=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+    - export BASE_URL="http://${DOCKER_HOST_IP}:8080"
+    - echo "Waiting for Gateway at ${BASE_URL}..."
+    - timeout 90s sh -c "until curl -fsS ${BASE_URL}/ > /dev/null 2>&1; do sleep 2; done"
     - cd frontend
     - npm ci
   script:
