@@ -1,0 +1,101 @@
+stages:
+  - test
+  - build
+  - deploy
+
+# ── CI variables to set in GitLab → Settings → CI/CD → Variables ──────────
+# DOCKER_HUB_USER     your Docker Hub username
+# DOCKER_HUB_TOKEN    Docker Hub access token (mark as masked+protected)
+# MASTER_IP           public IP of the GCP master node
+# SSH_PRIVATE_KEY     contents of /root/.ssh/id_rsa from the mgmt container (masked+protected)
+# ──────────────────────────────────────────────────────────────────────────
+
+.maven-cache: &maven-cache
+  cache:
+    key: maven-$CI_COMMIT_REF_SLUG
+    paths:
+      - .m2/repository
+
+# ── Stage 1: test (auth + profile only) ───────────────────────────────────
+
+test:auth-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  <<: *maven-cache
+  script:
+    - mvn -f services/auth-service/pom.xml test -Dmaven.repo.local=.m2/repository
+  artifacts:
+    when: always
+    reports:
+      junit: services/auth-service/target/surefire-reports/TEST-*.xml
+
+test:profile-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  <<: *maven-cache
+  script:
+    - mvn -f services/profile-service/pom.xml test -Dmaven.repo.local=.m2/repository
+  artifacts:
+    when: always
+    reports:
+      junit: services/profile-service/target/surefire-reports/TEST-*.xml
+
+# ── Stage 2: build + push all Docker images ───────────────────────────────
+# Uses Docker-in-Docker. Each job builds one service image and pushes it
+# to Docker Hub tagged with the commit SHA (and :latest on master).
+
+.build-image: &build-image
+  stage: build
+  image: docker:24
+  services:
+    - docker:24-dind
+  before_script:
+    - echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USER" --password-stdin
+
+build:auth-service:
+  <<: *build-image
+  script:
+    - docker build -t $DOCKER_HUB_USER/g37-auth-service:$CI_COMMIT_SHORT_SHA services/auth-service
+    - docker push $DOCKER_HUB_USER/g37-auth-service:$CI_COMMIT_SHORT_SHA
+    - docker tag $DOCKER_HUB_USER/g37-auth-service:$CI_COMMIT_SHORT_SHA $DOCKER_HUB_USER/g37-auth-service:latest
+    - docker push $DOCKER_HUB_USER/g37-auth-service:latest
+
+build:profile-service:
+  <<: *build-image
+  script:
+    - docker build -t $DOCKER_HUB_USER/g37-profile-service:$CI_COMMIT_SHORT_SHA services/profile-service
+    - docker push $DOCKER_HUB_USER/g37-profile-service:$CI_COMMIT_SHORT_SHA
+    - docker tag $DOCKER_HUB_USER/g37-profile-service:$CI_COMMIT_SHORT_SHA $DOCKER_HUB_USER/g37-profile-service:latest
+    - docker push $DOCKER_HUB_USER/g37-profile-service:latest
+
+build:recommendation-service:
+  <<: *build-image
+  script:
+    - docker build -t $DOCKER_HUB_USER/g37-recommendation-service:$CI_COMMIT_SHORT_SHA services/recommendation-service
+    - docker push $DOCKER_HUB_USER/g37-recommendation-service:$CI_COMMIT_SHORT_SHA
+    - docker tag $DOCKER_HUB_USER/g37-recommendation-service:$CI_COMMIT_SHORT_SHA $DOCKER_HUB_USER/g37-recommendation-service:latest
+    - docker push $DOCKER_HUB_USER/g37-recommendation-service:latest
+
+build:agent-service:
+  <<: *build-image
+  script:
+    - docker build -t $DOCKER_HUB_USER/g37-agent-service:$CI_COMMIT_SHORT_SHA services/agent-service
+    - docker push $DOCKER_HUB_USER/g37-agent-service:$CI_COMMIT_SHORT_SHA
+    - docker tag $DOCKER_HUB_USER/g37-agent-service:$CI_COMMIT_SHORT_SHA $DOCKER_HUB_USER/g37-agent-service:latest
+    - docker push $DOCKER_HUB_USER/g37-agent-service:latest
+
+build:gateway:
+  <<: *build-image
+  script:
+    - docker build -t $DOCKER_HUB_USER/g37-gateway:$CI_COMMIT_SHORT_SHA frontend
+    - docker push $DOCKER_HUB_USER/g37-gateway:$CI_COMMIT_SHORT_SHA
+    - docker tag $DOCKER_HUB_USER/g37-gateway:$CI_COMMIT_SHORT_SHA $DOCKER_HUB_USER/g37-gateway:latest
+    - docker push $DOCKER_HUB_USER/g37-gateway:latest
+
+# ── Stage 3: deploy — SSH into master and apply updated manifests ──────────
+
+deploy:k8s:
+  stage: deploy
+  image: alpine:latest
+    # ASK TEACHER: are we supposed to have auto deploy to k8s?
+    # as that would require us to have the ssh private key and the VMs running constatly.
