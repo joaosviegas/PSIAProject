@@ -67,16 +67,25 @@ redis:
 smoke:
     ./scripts/smoke.sh
 
-# Run a service's tests without a local JDK, e.g. `just test auth-service`
-test service:
-    docker run --rm -v "$PWD/services/{{service}}":/app -v psia-m2:/root/.m2 -w /app maven:3.9-eclipse-temurin-21 mvn -q test
+# Run unit tests for a specific service or all services
+test service="":
+    #!/usr/bin/env bash
+    if [ -z "{{service}}" ]; then
+        echo "Running tests for all services..."
+        for s in auth-service profile-service recommendation-service agent-service; do
+            echo "--- Testing $s ---"
+            docker run --rm -v "$PWD/services/$s":/app -v psia-m2:/root/.m2 -w /app maven:3.9-eclipse-temurin-21 mvn -q test || exit 1
+        done
+    else
+        docker run --rm -v "$PWD/services/{{service}}":/app -v psia-m2:/root/.m2 -w /app maven:3.9-eclipse-temurin-21 mvn -q test
+    fi
 
 # Run Playwright E2E tests in Docker against the local stack
 test-e2e:
     @echo "Starting infrastructure for E2E tests..."
     just start
     @echo "Waiting for Gateway to be ready on port 8080..."
-    timeout 30 sh -c 'until curl -s http://localhost:8080/ > /dev/null; do sleep 2; done'
+    timeout 60 sh -c 'until curl -s http://localhost:8080/ > /dev/null; do sleep 2; done'
     docker run --rm \
       --network host \
       -v "$PWD/frontend:/work" \
@@ -89,7 +98,7 @@ test-e2e-ui:
     @echo "Starting infrastructure for E2E tests..."
     just start
     @echo "Waiting for Gateway to be ready on port 8080..."
-    timeout 30 sh -c 'until curl -s http://localhost:8080/ > /dev/null; do sleep 2; done'
+    timeout 60 sh -c 'until curl -s http://localhost:8080/ > /dev/null; do sleep 2; done'
     xhost +local:root || true
     docker run --rm -it \
       --network host \

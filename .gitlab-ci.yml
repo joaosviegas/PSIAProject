@@ -20,7 +20,7 @@ variables:
     paths:
       - .m2/repository
 
-# ── Stage 1: test (auth + profile only) ───────────────────────────────────
+# ── Stage 1: test (all services) ──────────────────────────────────────────
 
 test:auth-service:
   stage: test
@@ -43,6 +43,28 @@ test:profile-service:
     when: always
     reports:
       junit: services/profile-service/target/surefire-reports/TEST-*.xml
+
+test:recommendation-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  <<: *maven-cache
+  script:
+    - mvn -f services/recommendation-service/pom.xml test -Dmaven.repo.local=.m2/repository
+  artifacts:
+    when: always
+    reports:
+      junit: services/recommendation-service/target/surefire-reports/TEST-*.xml
+
+test:agent-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  <<: *maven-cache
+  script:
+    - mvn -f services/agent-service/pom.xml test -Dmaven.repo.local=.m2/repository
+  artifacts:
+    when: always
+    reports:
+      junit: services/agent-service/target/surefire-reports/TEST-*.xml
 
 # ── Stage 2: build + push all Docker images ───────────────────────────────
 
@@ -104,16 +126,19 @@ e2e_tests:
   stage: e2e
   image: mcr.microsoft.com/playwright:v1.64.0-jammy
   services:
-    - name: docker:dind
+    - name: docker:24-dind
       alias: docker
   variables:
     DOCKER_HOST: tcp://docker:2375
     DOCKER_TLS_CERTDIR: ""
     DOCKER_DRIVER: overlay2
-    BASE_URL: "http://gateway:8080"
+    BASE_URL: "http://docker:8080"
   before_script:
-    - apt-get update && apt-get install -y docker.io docker-compose-v2
-    - docker compose up -d postgres redis auth-service profile-service recommendation-service agent-service gateway
+    - apt-get update && apt-get install -y docker.io docker-compose-v2 curl
+    - cp .env.example .env
+    - docker compose up -d --build
+    - echo "Waiting for Gateway to be responsive on docker:8080..."
+    - timeout 90s sh -c 'until curl -fsS http://docker:8080/ > /dev/null 2>&1; do sleep 2; done'
     - cd frontend
     - npm ci
   script:
@@ -125,7 +150,7 @@ e2e_tests:
       - frontend/test-results/
     expire_in: 7 days
 
-# ── Stage 4: deploy — SSH into master and apply updated manifests ──────────
+# ── Stage 4: deploy ────────────────────────────────────────────────────────
 
 deploy:k8s:
   stage: deploy
