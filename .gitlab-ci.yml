@@ -4,7 +4,7 @@ stages:
   - deploy
 
 variables:
-  GIT_SSL_NO_VERIFY: "true" # to test w/ local docker runner
+  GIT_SSL_NO_VERIFY: "true"
 
 # ── CI variables to set in GitLab → Settings → CI/CD → Variables ──────────
 # DOCKER_HUB_USER     your Docker Hub username
@@ -44,14 +44,11 @@ test:profile-service:
       junit: services/profile-service/target/surefire-reports/TEST-*.xml
 
 # ── Stage 2: build + push all Docker images ───────────────────────────────
-# Uses Docker-in-Docker. Each job builds one service image and pushes it
-# to Docker Hub tagged with the commit SHA (and :latest on master).
+# Uses the host Docker socket (socket binding via runner config.toml volumes).
 
 .build-image: &build-image
   stage: build
   image: docker:24
-  services:
-    - docker:24-dind
   before_script:
     - echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USER" --password-stdin
 
@@ -101,6 +98,6 @@ deploy:k8s:
   stage: deploy
   image: alpine:latest
   # ASK TEACHER: are we supposed to have auto deploy to k8s?
-  # as that would require us to have the ssh private key in the repo and the VMs running constantly.
+  # as that would require us to have the VMs running constantly.
   script:
     - exit 0
