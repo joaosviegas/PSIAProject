@@ -97,5 +97,7 @@ build:gateway:
 deploy:k8s:
   stage: deploy
   image: alpine:latest
-    # ASK TEACHER: are we supposed to have auto deploy to k8s?
-    # as that would require us to have the ssh private key and the VMs running constatly.
+  # ASK TEACHER: are we supposed to have auto deploy to k8s?
+  # as that would require us to have the ssh private key in the repo and the VMs running constantly.
+  script:
+    - exit 0
