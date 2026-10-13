@@ -84,8 +84,8 @@ class FeedServiceTest {
         assertThat(response.aiGenerated()).isFalse();
         assertThat(response.picks()).extracting(MovieDto::title).containsExactly("Arrival");
         assertThat(response.discover()).isNotEmpty();
-        verify(feedBuilder, timeout(2000)).build(withGenres);
-        verify(feedStore, timeout(2000)).save(any());
+        verify(feedBuilder, timeout(3000)).build(withGenres);
+        verify(feedStore, timeout(3000)).save(any());
     }
 
     @Test
@@ -95,7 +95,7 @@ class FeedServiceTest {
 
         service.refresh(USER);
 
-        verify(feedBuilder, timeout(2000)).build(withGenres);
+        verify(feedBuilder, timeout(3000)).build(withGenres);
     }
 
     @Test

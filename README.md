@@ -47,6 +47,8 @@ first startup. No external downloads or scripts needed.
 | `just logs <service>` | Follow logs (omit service for all) |
 | `just smoke` | End-to-end test through the gateway |
 | `just test <service>` | Run Maven tests in Docker, e.g. `just test auth-service` |
+| `just test-e2e` | Run Playwright E2E tests against the local Docker stack |
+| `just test-e2e-ui` | Run Playwright E2E tests in UI mode for debugging |
 | `just monitoring` | (Re)start only Prometheus, Grafana and the exporters |
 | `just psql auth` | Open psql on a service's database |
 | `just redis` | Open redis-cli |

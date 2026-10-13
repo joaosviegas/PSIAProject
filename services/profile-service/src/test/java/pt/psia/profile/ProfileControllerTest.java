@@ -12,11 +12,12 @@ import org.springframework.test.web.servlet.MockMvc;
 import pt.psia.profile.config.SecurityConfig;
 import pt.psia.profile.service.ProfileService;
 import pt.psia.profile.web.ProfileController;
-
 import pt.psia.profile.web.dto.ProfileResponse;
 
 import java.util.List;
+import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -78,7 +79,7 @@ class ProfileControllerTest {
 
     @Test
     void getMeCreatesAnEmptyProfileForNewUsers() throws Exception {
-        var id = java.util.UUID.fromString("00000000-0000-0000-0000-000000000001");
+        UUID id = UUID.fromString("00000000-0000-0000-0000-000000000001");
         when(profileService.getOrCreate(id, "alice")).thenReturn(new ProfileResponse(
                 id.toString(), "alice", "alice", null, List.of(), List.of(), List.of(), "2026-10-05T10:00:00Z"));
 

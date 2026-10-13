@@ -1,17 +1,11 @@
 stages:
   - test
   - build
+  - e2e
   - deploy
 
 variables:
   GIT_SSL_NO_VERIFY: "true"
-
-# ── CI variables to set in GitLab → Settings → CI/CD → Variables ──────────
-# DOCKER_HUB_USER     your Docker Hub username
-# DOCKER_HUB_TOKEN    Docker Hub access token (mark as masked+protected)
-# MASTER_IP           public IP of the GCP master node
-# SSH_PRIVATE_KEY     contents of /root/.ssh/id_rsa from the mgmt container (masked+protected)
-# ──────────────────────────────────────────────────────────────────────────
 
 .maven-cache: &maven-cache
   cache:
@@ -19,7 +13,7 @@ variables:
     paths:
       - .m2/repository
 
-# ── Stage 1: test (auth + profile only) ───────────────────────────────────
+# ── Stage 1: test (all services) ──────────────────────────────────────────
 
 test:auth-service:
   stage: test
@@ -43,8 +37,29 @@ test:profile-service:
     reports:
       junit: services/profile-service/target/surefire-reports/TEST-*.xml
 
+test:recommendation-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  <<: *maven-cache
+  script:
+    - mvn -f services/recommendation-service/pom.xml test -Dmaven.repo.local=.m2/repository
+  artifacts:
+    when: always
+    reports:
+      junit: services/recommendation-service/target/surefire-reports/TEST-*.xml
+
+test:agent-service:
+  stage: test
+  image: maven:3.9-eclipse-temurin-21
+  <<: *maven-cache
+  script:
+    - mvn -f services/agent-service/pom.xml test -Dmaven.repo.local=.m2/repository
+  artifacts:
+    when: always
+    reports:
+      junit: services/agent-service/target/surefire-reports/TEST-*.xml
+
 # ── Stage 2: build + push all Docker images ───────────────────────────────
-# Uses the host Docker socket (socket binding via runner config.toml volumes).
 
 .build-image: &build-image
   stage: build
@@ -92,7 +107,34 @@ build:gateway:
     - docker tag $DOCKER_HUB_USER/g37-gateway:$CI_COMMIT_SHORT_SHA $DOCKER_HUB_USER/g37-gateway:latest
     - docker push $DOCKER_HUB_USER/g37-gateway:latest
 
-# ── Stage 3: deploy — SSH into master and apply updated manifests ──────────
+# ── Stage 3: Playwright E2E tests ─────────────────────────────────────────
+
+e2e_tests:
+  stage: e2e
+  image: mcr.microsoft.com/playwright:v1.64.0-jammy
+  variables:
+    BASE_URL: "http://localhost:8080"
+  before_script:
+    - apt-get update && apt-get install -y docker.io docker-compose-v2 curl
+    - cp .env.example .env
+    - docker compose up -d --build --wait postgres redis auth-service profile-service recommendation-service agent-service gateway
+    # Fetch Docker host IP to route to published host port 8080
+    - DOCKER_HOST_IP=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
+    - export BASE_URL="http://${DOCKER_HOST_IP}:8080"
+    - echo "Waiting for Gateway at ${BASE_URL}..."
+    - timeout 90s sh -c "until curl -fsS ${BASE_URL}/ > /dev/null 2>&1; do sleep 2; done"
+    - cd frontend
+    - npm ci
+  script:
+    - npx playwright test
+  artifacts:
+    when: always
+    paths:
+      - frontend/playwright-report/
+      - frontend/test-results/
+    expire_in: 7 days
+
+# ── Stage 4: deploy ────────────────────────────────────────────────────────
 
 deploy:k8s:
   stage: deploy
