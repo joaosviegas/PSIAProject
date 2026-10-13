@@ -3,6 +3,9 @@ stages:
   - build
   - deploy
 
+variables:
+  GIT_SSL_NO_VERIFY: "true" # to test w/ local docker runner
+
 # ── CI variables to set in GitLab → Settings → CI/CD → Variables ──────────
 # DOCKER_HUB_USER     your Docker Hub username
 # DOCKER_HUB_TOKEN    Docker Hub access token (mark as masked+protected)
