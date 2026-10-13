@@ -1,6 +1,7 @@
 stages:
   - test
   - build
+  - e2e
   - deploy
 
 variables:
@@ -44,11 +45,16 @@ test:profile-service:
       junit: services/profile-service/target/surefire-reports/TEST-*.xml
 
 # ── Stage 2: build + push all Docker images ───────────────────────────────
-# Uses the host Docker socket (socket binding via runner config.toml volumes).
 
 .build-image: &build-image
   stage: build
   image: docker:24
+  services:
+    - name: docker:dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
   before_script:
     - echo "$DOCKER_HUB_TOKEN" | docker login -u "$DOCKER_HUB_USER" --password-stdin
 
@@ -92,7 +98,34 @@ build:gateway:
     - docker tag $DOCKER_HUB_USER/g37-gateway:$CI_COMMIT_SHORT_SHA $DOCKER_HUB_USER/g37-gateway:latest
     - docker push $DOCKER_HUB_USER/g37-gateway:latest
 
-# ── Stage 3: deploy — SSH into master and apply updated manifests ──────────
+# ── Stage 3: Playwright E2E tests ─────────────────────────────────────────
+
+e2e_tests:
+  stage: e2e
+  image: mcr.microsoft.com/playwright:v1.64.0-jammy
+  services:
+    - name: docker:dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_DRIVER: overlay2
+    BASE_URL: "http://gateway:8080"
+  before_script:
+    - apt-get update && apt-get install -y docker.io docker-compose-v2
+    - docker compose up -d postgres redis auth-service profile-service recommendation-service agent-service gateway
+    - cd frontend
+    - npm ci
+  script:
+    - npx playwright test
+  artifacts:
+    when: always
+    paths:
+      - frontend/playwright-report/
+      - frontend/test-results/
+    expire_in: 7 days
+
+# ── Stage 4: deploy — SSH into master and apply updated manifests ──────────
 
 deploy:k8s:
   stage: deploy

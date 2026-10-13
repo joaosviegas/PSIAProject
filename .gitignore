@@ -15,3 +15,8 @@ gcpcloud/.terraform/
 gcpcloud/.terraform.lock.hcl
 gcpcloud/terraform.tfstate
 gcpcloud/terraform.tfstate.backup
+
+# Frontend
+frontend/test-results/
+frontend/playwright-report/
+frontend/node_modules/
