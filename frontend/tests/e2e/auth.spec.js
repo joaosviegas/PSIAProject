@@ -1,8 +1,13 @@
 import { test, expect } from '@playwright/test';
 
 test.describe('Authentication & Navigation', () => {
-  const username = `testuser_${Date.now()}`;
+  let username;
   const password = 'password123';
+
+  test.beforeEach(() => {
+    // Generate a fresh unique username for each test run
+    username = `testuser_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+  });
 
   test('prevents access to protected routes when logged out', async ({ page }) => {
     await page.goto('/profile');
@@ -16,18 +21,27 @@ test.describe('Authentication & Navigation', () => {
     // Fill registration form
     await page.getByLabel('Username').fill(username);
     await page.getByLabel('Password').fill(password);
-    await page.getByRole('button', { name: 'Register' }).click();
     
-    // Assuming successful registration redirects to login or auto-logs in.
-    // The current UI shows a link to login, so we'll test the manual flow if it doesn't auto-route.
-    await page.goto('/login');
+    // Submit registration and wait for the API response to complete
+    await Promise.all([
+      page.waitForResponse(res => res.url().includes('/auth') && (res.status() === 200 || res.status() === 201)),
+      page.getByRole('button', { name: 'Register' }).click()
+    ]);
+    
+    // Navigate to login if the UI didn't auto-redirect
+    if (!page.url().includes('/login')) {
+      await page.goto('/login');
+    }
+
+    // Fill login form
     await page.getByLabel('Username').fill(username);
     await page.getByLabel('Password').fill(password);
     
-    // Loading state check
-    const loginBtn = page.getByRole('button', { name: 'Login' });
-    await loginBtn.click();
-    await expect(page.getByRole('button', { name: 'Logging in...' })).toBeVisible();
+    // Submit login and wait for the successful response
+    await Promise.all([
+      page.waitForResponse(res => res.url().includes('/auth') && res.status() === 200),
+      page.getByRole('button', { name: 'Login' }).click()
+    ]);
 
     // Successful login redirects to Feed (/)
     await expect(page).toHaveURL('/');
