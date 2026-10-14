@@ -6,7 +6,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 1 : undefined,
-  reporter: process.env.CI ? 'github' : 'html',
+  // Use 'list' for clear GitLab CI terminal logs alongside HTML report artifacts
+  reporter: process.env.CI 
+    ? [['list'], ['html', { open: 'never' }]] 
+    : 'html',
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:8080',
     trace: 'on-first-retry',
