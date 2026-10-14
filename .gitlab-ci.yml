@@ -8,6 +8,9 @@ variables:
   GIT_SSL_NO_VERIFY: "true"
   GIT_DEPTH: "0"
   GIT_STRATEGY: clone     # Ensures clean workspace per job
+  # /builds is shared with the runner host (so compose bind mounts resolve); one checkout
+  # per concurrent slot so parallel jobs don't clone over each other.
+  GIT_CLONE_PATH: $CI_BUILDS_DIR/$CI_CONCURRENT_ID/$CI_PROJECT_PATH
 
 # Separate cache per job to prevent concurrent write corruption
 .maven-cache: &maven-cache
@@ -132,6 +135,11 @@ e2e_tests:
     - npm ci
   script:
     - npx playwright test
+  # The stack runs on the runner VM's own Docker daemon, so tear it down or the next run
+  # hits leftover containers and busy ports (8080, 5432).
+  after_script:
+    - if [ "$CI_JOB_STATUS" != "success" ]; then docker compose ps -a; docker compose logs --tail=80 postgres auth-service profile-service recommendation-service agent-service; fi
+    - docker compose down -v --remove-orphans
   artifacts:
     when: always
     paths:

@@ -2,6 +2,8 @@
 #
 # Docker executor with the host Docker socket mounted: the build stage runs `docker build`
 # and the e2e stage runs `docker compose up`, both against the VM's own Docker daemon.
+# /builds is shared with the host so compose bind mounts (e.g. ./infra/postgres/init) resolve
+# to real files: the host daemon looks up those paths on the VM, not inside the job container.
 #
 # The runner token comes from GitLab > Settings > CI/CD > Runners > New project runner.
 # Put it in gcpcloud/runner.auto.tfvars (gitignored), never in this file:
@@ -51,6 +53,7 @@ resource "google_compute_instance" "gitlab_runner" {
                 --executor docker \
                 --docker-image alpine:latest \
                 --docker-volumes /var/run/docker.sock:/var/run/docker.sock \
+                --docker-volumes /builds:/builds \
                 --docker-volumes /cache
             sed -i 's/^concurrent = .*/concurrent = 2/' /etc/gitlab-runner/config.toml
             systemctl restart gitlab-runner

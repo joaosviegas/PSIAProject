@@ -168,7 +168,8 @@ credentials = file("psia-g37.json")   # must match the file you placed in gcpclo
 
 ### 2. Push images to Docker Hub
 
-Before provisioning, build and push all service images so the K8s nodes can pull them:
+Once the CI/CD pipeline is set up, its `build` stage does this on every push and you can skip this step.
+Otherwise, before provisioning, build and push all service images so the K8s nodes can pull them:
 
 ```bash
 # from repo root — build and tag each image
@@ -216,9 +217,12 @@ terraform plan
 terraform apply
 ```
 
-Terraform creates 1 master + 3 worker VMs (`n1-standard-2`, Ubuntu 22.04) and
+Terraform creates 1 master + 3 worker VMs (`n1-standard-2`, Ubuntu 22.04),
 a firewall rule that opens ports 80, 443, 6443 (K8s API), 179 (Calico BGP),
-and the NodePort range 30000–32767.
+and the NodePort range 30000–32767, and the GitLab CI runner VM
+(see **Advanced Component: CI/CD Pipeline**, which needs `gcpcloud/runner.auto.tfvars`
+to exist before `terraform apply`). To provision only the cluster, without the runner:
+`terraform apply -target=google_compute_instance.master -target=google_compute_instance.worker -target=google_compute_firewall.cluster_rules`.
 
 The final output lists the public IPs:
 ```
@@ -328,6 +332,97 @@ Then exit the container and stop it:
 # from the host, in gcpcloud/
 just stop
 ```
+
+## Advanced Component: CI/CD Pipeline
+
+Every push runs a GitLab CI pipeline (`.gitlab-ci.yml`) on a self-hosted runner in GCP. The pipeline
+tests and packages the application, and on `master` it also deploys it to the Kubernetes cluster.
+
+```
+test ──► build ──► e2e ──► deploy (master only)
+```
+
+| Stage | Jobs | What it does |
+|---|---|---|
+| `test` | `test:<service>` × 4 | `mvn test` for each Spring service, in parallel. JUnit reports show up in the GitLab MR/pipeline UI |
+| `build` | `build:<service>` × 5 | Builds the 4 service images + the gateway and pushes `<DOCKER_HUB_USER>/g37-<svc>:<commit-sha>` and `:latest` to Docker Hub |
+| `e2e` | `e2e_tests` | Starts the full stack with `docker compose` (without Ollama, so the AI paths use their fallback) and runs the Playwright suite in `frontend/tests/e2e/`. The HTML report, traces and videos are kept as job artifacts for 7 days |
+| `deploy` | `deploy:k8s` | SSHes into the cluster master and runs `kubectl set image` to roll every service to the image built from this commit, then waits for `kubectl rollout status` |
+
+The deploy updates images only. Manifest changes (new env vars, new services, secrets) are still
+applied with `ansible-playbook ansible-deploy-app.yml`. Because every deploy uses an immutable
+commit-SHA tag, rolling back is `sudo kubectl rollout undo deployment/<svc>` on the master.
+
+### Running the same tests locally
+
+```bash
+just test auth-service   # unit/integration tests for one service (also: profile-service, recommendation-service, agent-service)
+just start && just test-e2e   # Playwright E2E against the local Docker stack
+```
+
+### 1. GitLab runner on GCP
+
+The runner is a separate VM (`gcpcloud/terraform-gcp-runner.tf`), not part of the K8s cluster, so CI keeps
+working while the cluster is torn down or rebuilt. It is an `n1-standard-2` with the **Docker executor**. The host's
+Docker socket is mounted into jobs because the build and e2e stages run `docker build` / `docker compose`.
+`concurrent = 2` so two Maven jobs fit in 7.5 GB of RAM.
+
+1. In GitLab: **Settings → CI/CD → Runners → New project runner**. Platform **Linux**, tick **Run untagged jobs**
+   (the pipeline jobs have no `tags:`). Copy the `glrt-...` token.
+2. Put the token in `gcpcloud/runner.auto.tfvars` (gitignored, never commit it):
+   ```hcl
+   GITLAB_RUNNER_TOKEN = "glrt-..."
+   ```
+3. From the mgmt container:
+   ```bash
+   cd /root/project/gcpcloud
+   terraform apply -target=google_compute_instance.gitlab_runner   # runner only
+   ```
+   The VM's startup script installs Docker and `gitlab-runner` and registers against
+   `https://gitlab.rnl.tecnico.ulisboa.pt`. Allow about 2 minutes.
+4. Check it: the runner shows a green dot under **Settings → CI/CD → Runners**. On the VM
+   (`ssh ubuntu@$(terraform output -raw gitlab_runner_ip)`):
+   ```bash
+   sudo gitlab-runner verify          # "is valid"
+   sudo systemctl status gitlab-runner
+   sudo journalctl -u google-startup-scripts --no-pager | tail -50   # if it didn't register
+   ```
+
+If the token is lost or revoked, create a new runner in GitLab, update `runner.auto.tfvars`, and run
+`terraform apply -replace=google_compute_instance.gitlab_runner`.
+
+### 2. CI/CD variables
+
+**Settings → CI/CD → Variables**. `master` must be a protected branch (GitLab's default) so protected variables reach it.
+
+| Key | Value | Settings |
+|---|---|---|
+| `DOCKER_HUB_USER` | Docker Hub username (same as in `terraform-gcp-variables.tf`) | Visible |
+| `DOCKER_HUB_TOKEN` | Docker Hub access token (Account settings → Personal access tokens, Read & Write) | Masked and hidden, Protected |
+| `K8S_SSH_KEY` | Private key the VMs trust, base64 on one line: `base64 -w0 /root/.ssh/id_rsa` in the mgmt container | Type Variable, Masked and hidden, Protected, Expand off |
+| `K8S_MASTER_IP` | `terraform output master` | Visible |
+
+`K8S_SSH_KEY` is base64-encoded because GitLab refuses to mask values that contain whitespace. The job decodes it.
+Uses the private key (`id_rsa`).
+
+### 3. Turning auto-deploy on and off
+
+`deploy:k8s` only runs when the branch is `master` **and** `K8S_MASTER_IP` is set:
+
+- **Cluster up:** set `K8S_MASTER_IP` to the current master IP. It changes every time the cluster VMs are recreated.
+- **Cluster destroyed:** delete `K8S_MASTER_IP`. The deploy job then doesn't appear and the pipeline stays green.
+
+### 4. Verifying a deploy
+
+1. Push a commit to `master` and watch `test → build → e2e → deploy` finish in **Build → Pipelines**.
+2. On the master: `sudo kubectl get deploy -o wide` shows images tagged with the pipeline's short commit SHA.
+3. Open `http://<any-worker-ip>:30080`.
+
+### Cost
+
+The runner VM runs all the time (about the same price as one cluster node). Stop it from GCP Console →
+Compute Engine when it isn't needed, or remove it with
+`terraform destroy -target=google_compute_instance.gitlab_runner`.
 
 ## Team
 
