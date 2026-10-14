@@ -11,6 +11,7 @@ dist/
 
 # GCP / Terraform — never commit credentials or state
 gcpcloud/*.json
+gcpcloud/*.tfvars
 gcpcloud/.terraform/
 gcpcloud/.terraform.lock.hcl
 gcpcloud/terraform.tfstate

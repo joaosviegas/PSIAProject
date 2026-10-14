@@ -144,7 +144,22 @@ e2e_tests:
 deploy:k8s:
   stage: deploy
   image: alpine:latest
-  # ASK TEACHER: are we supposed to have auto deploy to k8s?
-  # as that would require us to have the VMs running constantly.
+  # Rolls the images built in this pipeline (tagged with the commit SHA) out to the cluster.
+  # Manifest changes (env vars, new services) still go through gcpcloud/ansible-deploy-app.yml.
+  # Needs CI variables K8S_SSH_KEY (private key, base64 -w0 so it can be masked) and K8S_MASTER_IP;
+  # unset K8S_MASTER_IP while the cluster VMs are down and this job is skipped.
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master" && $K8S_MASTER_IP'
+  before_script:
+    - apk add --no-cache openssh-client
+    - echo "$K8S_SSH_KEY" | base64 -d > ~/id_rsa && chmod 600 ~/id_rsa
   script:
-    - exit 0
+    - |
+      ssh -i ~/id_rsa -o StrictHostKeyChecking=no ubuntu@$K8S_MASTER_IP "
+        set -e
+        for svc in auth-service profile-service recommendation-service agent-service gateway; do
+          sudo kubectl set image deployment/\$svc \$svc=$DOCKER_HUB_USER/g37-\$svc:$CI_COMMIT_SHORT_SHA
+        done
+        for svc in auth-service profile-service recommendation-service agent-service gateway; do
+          sudo kubectl rollout status deployment/\$svc --timeout=300s
+        done"
