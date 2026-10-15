@@ -21,7 +21,7 @@ function logout() {
 <template>
   <header class="site-header">
     <nav>
-      <router-link to="/" class="logo"><span>PSIA</span> Movies</router-link>
+      <router-link to="/" class="logo">Letter<span>slop</span>d</router-link>
       <div v-if="auth.isLoggedIn" class="nav-links">
         <router-link to="/">Feed</router-link>
         <router-link to="/ask">Ask AI</router-link>
