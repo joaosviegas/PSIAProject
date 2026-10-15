@@ -26,7 +26,7 @@ scrape_configs:
 
   - job_name: postgres
     static_configs:
-      - targets: ["postgres-exporter:9187"]
+      - targets: ["postgres-auth:9187", "postgres-profile:9187", "postgres-movies:9187"]
 
   - job_name: redis
     static_configs:

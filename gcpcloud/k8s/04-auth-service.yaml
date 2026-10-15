@@ -23,7 +23,7 @@ spec:
           imagePullPolicy: Always
           env:
             - name: SPRING_DATASOURCE_URL
-              value: jdbc:postgresql://postgres:5432/auth
+              value: jdbc:postgresql://postgres-auth:5432/auth
             - name: SPRING_DATASOURCE_USERNAME
               value: auth_svc
             - name: SPRING_DATASOURCE_PASSWORD

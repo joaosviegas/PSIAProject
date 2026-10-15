@@ -18,11 +18,11 @@ start: _check-env
 
 # Start only the ready-made containers (Postgres, Redis, Ollama + model pull). Works before phase 1.
 infra: _check-env
-    docker compose up -d postgres redis llm llm-init
+    docker compose up -d postgres-auth postgres-profile postgres-movies redis llm llm-init
 
 # (Re)start only the monitoring stack: Prometheus, Grafana and the Postgres/Redis exporters
 monitoring: _check-env
-    docker compose up -d prometheus grafana postgres-exporter redis-exporter
+    docker compose up -d prometheus grafana postgres-auth-exporter postgres-profile-exporter postgres-movies-exporter redis-exporter
 
 # Stop and remove containers (data volumes are kept)
 stop:
@@ -31,7 +31,7 @@ stop:
 # Stop and DELETE app data (Postgres, Redis). Keeps the downloaded LLM model (~1 GB) and dataset/raw.
 clean:
     docker compose down
-    -docker volume rm psia_postgres-data psia_redis-data
+    -docker volume rm psia_postgres-auth-data psia_postgres-profile-data psia_postgres-movies-data psia_redis-data
 
 # Stop and delete EVERYTHING, including the LLM model and downloaded/seeded dataset files
 nuke:
@@ -55,9 +55,9 @@ logs service="":
 ps:
     docker compose ps
 
-# Open psql on a service database, e.g. `just psql auth`
-psql db="postgres":
-    docker compose exec postgres psql -U postgres -d {{db}}
+# Open psql on a service database: auth, profile or movies, e.g. `just psql auth`
+psql db="movies":
+    docker compose exec postgres-{{db}} sh -c 'psql -U "$POSTGRES_USER" "$POSTGRES_DB"'
 
 # Open redis-cli on the agent cache
 redis:

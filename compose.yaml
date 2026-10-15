@@ -18,6 +18,24 @@ x-java-service: &java-service
     retries: 30
     start_period: 40s
 
+# Settings shared by the three Postgres servers.
+x-postgres: &postgres
+  image: postgres:17          # keep 17: the 18 image changed its data path and ignores this volume mount
+  restart: unless-stopped
+  # -h 127.0.0.1 matters: during first-time init the server only listens on a
+  # unix socket, so a TCP check does not report "ready" before init has finished.
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+    interval: 5s
+    timeout: 3s
+    retries: 30
+
+# Exporter shares its Postgres server's network (like a k8s sidecar), so Prometheus
+# scrapes postgres-<svc>:9187 in both compose and Kubernetes.
+x-postgres-exporter: &postgres-exporter
+  image: prometheuscommunity/postgres-exporter:latest
+  restart: unless-stopped
+
 services:
 
   # ---------- Entry point: nginx serving the Vue build + reverse proxy for /api/* ----------
@@ -42,30 +60,30 @@ services:
     <<: *java-service
     build: ./services/auth-service
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-auth:5432/auth
       SPRING_DATASOURCE_USERNAME: auth_svc
       SPRING_DATASOURCE_PASSWORD: ${AUTH_DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       JWT_TTL_MINUTES: ${JWT_TTL_MINUTES:-120}
     depends_on:
-      postgres: { condition: service_healthy }
+      postgres-auth: { condition: service_healthy }
 
   profile-service:
     <<: *java-service
     build: ./services/profile-service
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/profile
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-profile:5432/profile
       SPRING_DATASOURCE_USERNAME: profile_svc
       SPRING_DATASOURCE_PASSWORD: ${PROFILE_DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
     depends_on:
-      postgres: { condition: service_healthy }
+      postgres-profile: { condition: service_healthy }
 
   recommendation-service:
     <<: *java-service
     build: ./services/recommendation-service
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/movies
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-movies:5432/movies
       SPRING_DATASOURCE_USERNAME: movies_svc
       SPRING_DATASOURCE_PASSWORD: ${MOVIES_DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
@@ -76,7 +94,7 @@ services:
       LLM_TIMEOUT_SECONDS: ${RECO_LLM_TIMEOUT_SECONDS:-30}
       LLM_INTERACTIVE_TIMEOUT_SECONDS: ${RECO_LLM_INTERACTIVE_TIMEOUT_SECONDS:-25}
     depends_on:
-      postgres: { condition: service_healthy }
+      postgres-movies: { condition: service_healthy }
       llm: { condition: service_healthy } # so it doesn't wait for the model to be fully downloaded
 
   agent-service:
@@ -99,29 +117,34 @@ services:
       llm: { condition: service_healthy } # so it doesn't wait for the model to be fully downloaded
 
   # ---------- Data stores ----------
-  # One Postgres server, one database + one login role per service.
-  # A role can only connect to its own database (see infra/postgres/init/).
-  postgres:
-    image: postgres:17          # keep 17: the 18 image changed its data path and ignores this volume mount
-    restart: unless-stopped
+  # One Postgres server per service. The image creates POSTGRES_USER/POSTGRES_DB on first start,
+  # so each service's role only exists on its own server.
+  postgres-auth:
+    <<: *postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD}
-      AUTH_DB_PASSWORD: ${AUTH_DB_PASSWORD}
-      PROFILE_DB_PASSWORD: ${PROFILE_DB_PASSWORD}
-      MOVIES_DB_PASSWORD: ${MOVIES_DB_PASSWORD}
+      POSTGRES_DB: auth
+      POSTGRES_USER: auth_svc
+      POSTGRES_PASSWORD: ${AUTH_DB_PASSWORD}
     volumes:
-      - postgres-data:/var/lib/postgresql/data
-      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
-    # -h 127.0.0.1 matters: during first-time init the server only listens on a
-    # unix socket, so a TCP check does not report "ready" before init has finished.
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U postgres -d movies"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
-    # Uncomment to inspect the databases from your machine (DBeaver, psql):
-    ports: ["5432:5432"]
+      - postgres-auth-data:/var/lib/postgresql/data
+
+  postgres-profile:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: profile
+      POSTGRES_USER: profile_svc
+      POSTGRES_PASSWORD: ${PROFILE_DB_PASSWORD}
+    volumes:
+      - postgres-profile-data:/var/lib/postgresql/data
+
+  postgres-movies:
+    <<: *postgres
+    environment:
+      POSTGRES_DB: movies
+      POSTGRES_USER: movies_svc
+      POSTGRES_PASSWORD: ${MOVIES_DB_PASSWORD}
+    volumes:
+      - postgres-movies-data:/var/lib/postgresql/data
 
   # Agent's dedicated store (recommendation feed cache). AOF keeps it across restarts.
   redis:
@@ -164,7 +187,7 @@ services:
       llm: { condition: service_healthy }
 
   # ---------- Monitoring (project step 4) ----------
-  # Prometheus scrapes /actuator/prometheus on every Spring service plus the two exporters below.
+  # Prometheus scrapes /actuator/prometheus on every Spring service plus the exporters below.
   prometheus:
     image: prom/prometheus:latest
     restart: unless-stopped
@@ -177,15 +200,35 @@ services:
     ports:
       - "${PROMETHEUS_PORT:-9090}:9090"
 
-  postgres-exporter:
-    image: prometheuscommunity/postgres-exporter:latest
-    restart: unless-stopped
+  postgres-auth-exporter:
+    <<: *postgres-exporter
+    network_mode: service:postgres-auth
     environment:
-      DATA_SOURCE_URI: postgres:5432/postgres?sslmode=disable
-      DATA_SOURCE_USER: postgres
-      DATA_SOURCE_PASS: ${POSTGRES_ADMIN_PASSWORD}
+      DATA_SOURCE_URI: localhost:5432/auth?sslmode=disable
+      DATA_SOURCE_USER: auth_svc
+      DATA_SOURCE_PASS: ${AUTH_DB_PASSWORD}
     depends_on:
-      postgres: { condition: service_healthy }
+      postgres-auth: { condition: service_healthy }
+
+  postgres-profile-exporter:
+    <<: *postgres-exporter
+    network_mode: service:postgres-profile
+    environment:
+      DATA_SOURCE_URI: localhost:5432/profile?sslmode=disable
+      DATA_SOURCE_USER: profile_svc
+      DATA_SOURCE_PASS: ${PROFILE_DB_PASSWORD}
+    depends_on:
+      postgres-profile: { condition: service_healthy }
+
+  postgres-movies-exporter:
+    <<: *postgres-exporter
+    network_mode: service:postgres-movies
+    environment:
+      DATA_SOURCE_URI: localhost:5432/movies?sslmode=disable
+      DATA_SOURCE_USER: movies_svc
+      DATA_SOURCE_PASS: ${MOVIES_DB_PASSWORD}
+    depends_on:
+      postgres-movies: { condition: service_healthy }
 
   redis-exporter:
     image: oliver006/redis_exporter:latest
@@ -214,7 +257,9 @@ services:
       - prometheus
 
 volumes:
-  postgres-data:
+  postgres-auth-data:
+  postgres-profile-data:
+  postgres-movies-data:
   redis-data:
   ollama-models:
   prometheus-data:

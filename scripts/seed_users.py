@@ -15,7 +15,6 @@ import urllib.request
 
 BASE = os.environ.get("BASE_URL", f"http://localhost:{os.environ.get('GATEWAY_PORT', '8080')}") + "/api"
 PASSWORD = os.environ.get("SEED_PASSWORD", "password123")
-PG = "psia-postgres-1"
 TEST_ACCOUNT = re.compile(r"^(smoke_|feedtest_|mon|chk|eval|var)\d+$")
 
 # name, username, bio, persona, secondary persona
@@ -115,7 +114,7 @@ def call(method, path, body=None, token=None, params=None):
 
 def psql(db, sql):
     out = subprocess.run(
-        ["docker", "exec", "-i", PG, "sh", "-c", f'psql -U "$POSTGRES_USER" -d {db} -tA -v ON_ERROR_STOP=1'],
+        ["docker", "exec", "-i", f"psia-postgres-{db}-1", "sh", "-c", f'psql -U "$POSTGRES_USER" -d {db} -tA -v ON_ERROR_STOP=1'],
         input=sql, capture_output=True, text=True, check=True,
     )
     return out.stdout.strip()

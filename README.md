@@ -78,14 +78,14 @@ Requires the backend to be running (`just start`).
 | Service | Path via gateway | Store |
 |---|---|---|
 | gateway (nginx + Vue) | `/` | — |
-| auth-service | `/api/auth/*` | Postgres db `auth` |
-| profile-service | `/api/profiles/*` | Postgres db `profile` |
-| recommendation-service | `/api/movies/*`, `/api/recommendations` | Postgres db `movies` + Ollama |
+| auth-service | `/api/auth/*` | Postgres server `postgres-auth` |
+| profile-service | `/api/profiles/*` | Postgres server `postgres-profile` |
+| recommendation-service | `/api/movies/*`, `/api/recommendations` | Postgres server `postgres-movies` + Ollama |
 | agent-service | `/api/feed/*` | Redis + Ollama |
 | llm (Ollama) | internal | model volume |
 | prometheus | `http://localhost:9090` | metrics volume |
 | grafana | `http://localhost:3000` | dashboards volume |
-| postgres-exporter, redis-exporter | internal | — |
+| postgres-{auth,profile,movies}-exporter, redis-exporter | internal | — |
 
 recommendation-service covers movie search/browse (`GET /api/movies`) and
 the "Ask AI" recommendation flow (`POST /api/recommendations`): pick some
@@ -106,7 +106,7 @@ queues the user for the next run.
 `just start` also brings up the monitoring stack:
 
 - **Prometheus** (`http://localhost:9090`) scrapes every 15s: `/actuator/prometheus` on the four
-  Spring services, `postgres-exporter` and `redis-exporter`. Config: `infra/monitoring/prometheus/prometheus.yml`.
+  Spring services, the three Postgres exporters and `redis-exporter`. Config: `infra/monitoring/prometheus/prometheus.yml`.
 - **Grafana** (`http://localhost:3000`, user `admin`, password `GRAFANA_ADMIN_PASSWORD` from `.env`)
   opens on the provisioned **PSIA Movie Hub** dashboard (`infra/monitoring/grafana/`).
 
@@ -297,7 +297,7 @@ All manifests live in `gcpcloud/k8s/` and are applied by `ansible-deploy-app.yml
 | File | What it creates |
 |---|---|
 | `00-secret.yaml` | Secret with all passwords and JWT_SECRET |
-| `01-postgres.yaml` | ConfigMap (init script) + PVC (5 Gi) + Deployment + ClusterIP Service |
+| `01-postgres.yaml` | One Postgres server per service (`postgres-auth`, `-profile`, `-movies`): hostPath on worker1 + Deployment with exporter sidecar + ClusterIP Service |
 | `02-redis.yaml` | PVC (1 Gi) + Deployment + ClusterIP Service |
 | `03-ollama.yaml` | PVC (10 Gi) + Deployment + ClusterIP Service + pull Job |
 | `04-auth-service.yaml` | Deployment + ClusterIP Service |
@@ -305,7 +305,7 @@ All manifests live in `gcpcloud/k8s/` and are applied by `ansible-deploy-app.yml
 | `06-recommendation-service.yaml` | Deployment + ClusterIP Service |
 | `07-agent-service.yaml` | Deployment + ClusterIP Service |
 | `08-gateway.yaml` | Deployment + NodePort Service (port **30080**) |
-| `09-monitoring.yaml` | Prometheus + Postgres/Redis exporters (ClusterIP) + Grafana (NodePort 30030). Config comes from `infra/monitoring/` via the `monitoring-config` ConfigMap created by `ansible-deploy-app.yml` |
+| `09-monitoring.yaml` | Prometheus + Redis exporter (ClusterIP) + Grafana (NodePort 30030). Config comes from `infra/monitoring/` via the `monitoring-config` ConfigMap created by `ansible-deploy-app.yml` |
 
 **After applying — pull the Ollama model:**
 

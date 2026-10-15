@@ -125,7 +125,7 @@ e2e_tests:
   before_script:
     - apt-get update && apt-get install -y docker.io docker-compose-v2 curl
     - cp .env.example .env
-    - docker compose up -d --build --wait postgres redis auth-service profile-service recommendation-service agent-service gateway
+    - docker compose up -d --build --wait postgres-auth postgres-profile postgres-movies redis auth-service profile-service recommendation-service agent-service gateway
     # Fetch Docker host IP to route to published host port 8080
     - DOCKER_HOST_IP=$(docker network inspect bridge -f '{{(index .IPAM.Config 0).Gateway}}')
     - export BASE_URL="http://${DOCKER_HOST_IP}:8080"
@@ -138,7 +138,7 @@ e2e_tests:
   # The stack runs on the runner VM's own Docker daemon, so tear it down or the next run
   # hits leftover containers and busy ports (8080, 5432).
   after_script:
-    - if [ "$CI_JOB_STATUS" != "success" ]; then docker compose ps -a; docker compose logs --tail=80 postgres auth-service profile-service recommendation-service agent-service; fi
+    - if [ "$CI_JOB_STATUS" != "success" ]; then docker compose ps -a; docker compose logs --tail=80 postgres-auth postgres-profile postgres-movies auth-service profile-service recommendation-service agent-service; fi
     - docker compose down -v --remove-orphans
   artifacts:
     when: always
