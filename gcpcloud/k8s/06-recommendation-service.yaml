@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: recommendation-service
-          image: joaosviegas/g37-recommendation-service:latest # already pushed to Docker Hub
+          image: DOCKER_HUB_USER/g37-recommendation-service:latest
           imagePullPolicy: Always
           env:
             - name: SPRING_DATASOURCE_URL

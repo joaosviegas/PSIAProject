@@ -24,7 +24,7 @@ spec:
     spec:
       containers:
         - name: gateway
-          image: joaosviegas/g37-gateway:latest # already pushed to Docker Hub
+          image: DOCKER_HUB_USER/g37-gateway:latest
           imagePullPolicy: Always
           env:
             - name: NGINX_ENTRYPOINT_LOCAL_RESOLVERS

@@ -8,11 +8,19 @@
   become_method: sudo
 
   tasks:
+    - name: Require the Docker Hub user that owns the images
+      assert:
+        that: docker_hub_user | default('') | length > 0
+        fail_msg: "Run with -e docker_hub_user=<your Docker Hub username>"
+
     - name: Copy all K8s manifests to master
       copy:
         src: k8s/
         dest: /home/ubuntu/k8s/
         mode: 0644
+
+    - name: Point the manifests at your Docker Hub images
+      shell: sed -i 's|DOCKER_HUB_USER/|{{ docker_hub_user }}/|' /home/ubuntu/k8s/*.yaml
 
     - name: Copy monitoring config (shared with compose) to master
       copy:

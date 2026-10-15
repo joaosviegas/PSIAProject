@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: agent-service
-          image: joaosviegas/g37-agent-service:latest # already pushed to Docker Hub
+          image: DOCKER_HUB_USER/g37-agent-service:latest
           imagePullPolicy: Always
           env:
             - name: SPRING_DATA_REDIS_HOST

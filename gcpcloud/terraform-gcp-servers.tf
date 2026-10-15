@@ -2,7 +2,6 @@
 # https://www.terraform.io/docs/configuration/resources.html
 #
 # Architecture: 1 master (control plane) + 3 workers (run pods).
-# Same structure as lab4.
 
 ###########  Workers (run application pods)  #############
 resource "google_compute_instance" "worker" {

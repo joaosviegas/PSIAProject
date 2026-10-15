@@ -17,7 +17,7 @@ ok "all containers healthy"
 curl -fsS "$BASE/" | grep -qi '<div id="app"' || fail "gateway did not return the Vue index.html"
 ok "gateway serves the frontend"
 
-# 3. Gateway routes to each service (ping endpoints added in phase 1)
+# 3. Gateway routes to each service
 for path in /api/auth/ping /api/profiles/ping /api/movies/ping /api/feed/ping; do
   curl -fsS "$BASE$path" >/dev/null || fail "GET $path"
   ok "GET $path"
@@ -53,10 +53,7 @@ PROFILE_CODE=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/api/profiles/me" -H
 [ "$PROFILE_CODE" != "401" ] || fail "profile-service rejected the JWT (got 401)"
 ok "JWT accepted by profile-service ($PROFILE_CODE)"
 
-# Export for later phase checks
-export TOKEN
-
-# --- Phase 3: profile-service ---
+# --- profile-service ---
 
 # 7. Create/update profile
 PUT_CODE=$(curl -s -o /dev/null -w '%{http_code}' -X PUT "$BASE/api/profiles/me" \
@@ -80,8 +77,6 @@ INTERNAL_CODE=$(docker compose exec -T profile-service curl -s -o /dev/null -w '
   "http://profile-service:8080/internal/profiles?updatedSince=2020-01-01T00:00:00Z")
 [ "$INTERNAL_CODE" = "200" ] || fail "GET /internal/profiles?updatedSince returned $INTERNAL_CODE"
 ok "GET /internal/profiles?updatedSince (internal) -> 200"
-
-# --- Phases 4-6 append their checks below this line ---
 
 # --- agent-service ---
 

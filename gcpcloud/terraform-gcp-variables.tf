@@ -27,9 +27,3 @@ variable "GCP_ZONE" {
     default = "europe-west1-c"
 }
 
-# CHANGE THIS: your Docker Hub username, used in K8s manifests.
-# After "docker login" and pushing images, this is the prefix for your images.
-# Example: if you pushed "johndoe/g37-auth-service", set this to "johndoe".
-variable "DOCKER_HUB_USER" {
-    default = "joaosviegas"
-}

@@ -17,7 +17,7 @@ A JDK is **not** required. Maven builds run inside Docker containers.
 
 ```bash
 # 1. Clone and configure
-git clone <repo-url> && cd proj-agi
+git clone <repo-url> && cd g37
 cp .env.example .env
 # Edit .env: change every password and set JWT_SECRET to a random 32+ char string.
 
@@ -52,15 +52,17 @@ first startup. No external downloads or scripts needed.
 | `just monitoring` | (Re)start only Prometheus, Grafana and the exporters |
 | `just psql auth` | Open psql on a service's database |
 | `just redis` | Open redis-cli |
-| `just clean` | Stop and delete Postgres + Redis data (keeps LLM model and the downloaded dataset) |
+| `just clean` | Stop and delete Postgres + Redis data (keeps the LLM model) |
 | `just nuke` | Stop and delete EVERYTHING including the LLM model |
 
 ## Movie dataset
 
-The catalog (~7k movies) is a pre-built enriched CSV
-(`dataset/movies_enriched.csv`) bundled into recommendation-service's Docker
-image at build time. `MovieDataLoader` bulk-inserts it into the `movies` table
-on first startup (no-op if the table already has rows). See `dataset/README.md`.
+The catalog (7,288 movies with posters, overviews, directors and cast) is a
+pre-built enriched CSV,
+`services/recommendation-service/src/main/resources/data/movies.csv`, bundled
+into recommendation-service's Docker image at build time. `MovieDataLoader`
+bulk-inserts it into the `movies` table on first startup (no-op if the table
+already has rows).
 
 To refresh the catalog: `just psql movies` → `TRUNCATE movies;`, then
 `just restart recommendation-service`.
@@ -158,12 +160,11 @@ Edit `gcpcloud/terraform-gcp-variables.tf`:
 variable "GCP_PROJECT_ID" { default = "your-gcp-project-id" }
 variable "GCP_MACHINE_TYPE" { default = "n1-standard-2" }  # 7.5 GB RAM — needed for Ollama
 variable "GCP_ZONE" { default = "europe-west1-c" }          # change if zone is out of capacity
-variable "DOCKER_HUB_USER" { default = "your-dockerhub-username" }
 ```
 
 Edit `gcpcloud/terraform-gcp-provider.tf` — replace the credentials filename:
 ```hcl
-credentials = file("psia-g37.json")   # must match the file you placed in gcpcloud/
+credentials = file("YOUR-GCP-KEY.json")   # must match the file you placed in gcpcloud/
 ```
 
 ### 2. Push images to Docker Hub
@@ -274,7 +275,7 @@ ansible-playbook ansible-gcp-configure-nodes.yml
 ansible-playbook ansible-k8s-install.yml
 ansible-playbook ansible-create-cluster.yml
 ansible-playbook ansible-workers-join.yml
-ansible-playbook ansible-deploy-app.yml
+ansible-playbook ansible-deploy-app.yml -e docker_hub_user=<DOCKER_HUB_USER>
 ```
 
 Verify the cluster on the master:
@@ -291,15 +292,15 @@ All manifests live in `gcpcloud/k8s/` and are applied by `ansible-deploy-app.yml
 **Before applying — set your secrets and image names:**
 
 1. Edit `gcpcloud/k8s/00-secret.yaml` — replace all `change_me_*` values (same as `.env`).
-2. In manifests `04` through `08`, replace `DOCKER_HUB_USER` with your Docker Hub username
-   (the value you set in `terraform-gcp-variables.tf`).
+2. Pass the Docker Hub user that owns the images as `-e docker_hub_user=<DOCKER_HUB_USER>`.
+   The playbook replaces the `DOCKER_HUB_USER` placeholder in manifests `04` through `08` with it.
 
 | File | What it creates |
 |---|---|
 | `00-secret.yaml` | Secret with all passwords and JWT_SECRET |
 | `01-postgres.yaml` | One Postgres server per service (`postgres-auth`, `-profile`, `-movies`): hostPath on worker1 + Deployment with exporter sidecar + ClusterIP Service |
-| `02-redis.yaml` | PVC (1 Gi) + Deployment + ClusterIP Service |
-| `03-ollama.yaml` | PVC (10 Gi) + Deployment + ClusterIP Service + pull Job |
+| `02-redis.yaml` | hostPath on worker1 + Deployment + ClusterIP Service |
+| `03-ollama.yaml` | hostPath on worker2 + Deployment + ClusterIP Service + pull Job |
 | `04-auth-service.yaml` | Deployment + ClusterIP Service |
 | `05-profile-service.yaml` | Deployment + ClusterIP Service |
 | `06-recommendation-service.yaml` | Deployment + ClusterIP Service |
@@ -346,7 +347,7 @@ test ──► build ──► e2e ──► deploy (master only)
 |---|---|---|
 | `test` | `test:<service>` × 4 | `mvn test` for each Spring service, in parallel. JUnit reports show up in the GitLab MR/pipeline UI |
 | `build` | `build:<service>` × 5 | Builds the 4 service images + the gateway and pushes `<DOCKER_HUB_USER>/g37-<svc>:<commit-sha>` and `:latest` to Docker Hub |
-| `e2e` | `e2e_tests` | Starts the full stack with `docker compose` (without Ollama, so the AI paths use their fallback) and runs the Playwright suite in `frontend/tests/e2e/`. The HTML report, traces and videos are kept as job artifacts for 7 days |
+| `e2e` | `e2e_tests` | Starts the full stack with `docker compose` (without the LLM model, so the AI paths use their fallback) and runs the Playwright suite in `frontend/tests/e2e/`. The HTML report, traces and videos are kept as job artifacts for 7 days |
 | `deploy` | `deploy:k8s` | SSHes into the cluster master and runs `kubectl set image` to roll every service to the image built from this commit, then waits for `kubectl rollout status` |
 
 The deploy updates images only. Manifest changes (new env vars, new services, secrets) are still
@@ -397,7 +398,7 @@ If the token is lost or revoked, create a new runner in GitLab, update `runner.a
 
 | Key | Value | Settings |
 |---|---|---|
-| `DOCKER_HUB_USER` | Docker Hub username (same as in `terraform-gcp-variables.tf`) | Visible |
+| `DOCKER_HUB_USER` | Docker Hub username (same as `docker_hub_user` passed to `ansible-deploy-app.yml`) | Visible |
 | `DOCKER_HUB_TOKEN` | Docker Hub access token (Account settings → Personal access tokens, Read & Write) | Masked and hidden, Protected |
 | `K8S_SSH_KEY` | Private key the VMs trust, base64 on one line: `base64 -w0 /root/.ssh/id_rsa` in the mgmt container | Type Variable, Masked and hidden, Protected, Expand off |
 | `K8S_MASTER_IP` | `terraform output master` | Visible |

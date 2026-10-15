@@ -4,7 +4,7 @@
 # Why "resolver + set $upstream": nginx then looks service names up at request
 # time instead of once at startup, so it survives a backend container being
 # recreated with a new IP, and it starts even if a backend is not up yet.
-# In Kubernetes (step 3) the *_UPSTREAM values become full service DNS names,
+# In Kubernetes the *_UPSTREAM values become full service DNS names,
 # e.g. auth-service.default.svc.cluster.local:8080 (nginx's resolver ignores
 # resolv.conf search domains).
 

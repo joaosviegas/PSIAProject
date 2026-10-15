@@ -11,12 +11,11 @@ default:
 _check-env:
     @test -f .env || { echo "Missing .env -> run: cp .env.example .env  (then edit the values)"; exit 1; }
 
-# Build images and start everything (needs phase 1 done: services/ and frontend/ must exist)
+# Build images and start everything
 start: _check-env
-    @test -d services/auth-service || { echo "services/ doesn't exist yet -> run phase 1 (docs/prompts/01-walking-skeleton.md) first, or use 'just infra'"; exit 1; }
     docker compose up -d --build
 
-# Start only the ready-made containers (Postgres, Redis, Ollama + model pull). Works before phase 1.
+# Start only the ready-made containers (Postgres, Redis, Ollama + model pull)
 infra: _check-env
     docker compose up -d postgres-auth postgres-profile postgres-movies redis llm llm-init
 
@@ -28,15 +27,14 @@ monitoring: _check-env
 stop:
     docker compose down
 
-# Stop and DELETE app data (Postgres, Redis). Keeps the downloaded LLM model (~1 GB) and dataset/raw.
+# Stop and DELETE app data (Postgres, Redis). Keeps the downloaded LLM model (~1 GB).
 clean:
     docker compose down
     -docker volume rm psia_postgres-auth-data psia_postgres-profile-data psia_postgres-movies-data psia_redis-data
 
-# Stop and delete EVERYTHING, including the LLM model and downloaded/seeded dataset files
+# Stop and delete EVERYTHING, including the LLM model
 nuke:
     docker compose down -v
-    rm -rf dataset/raw
 
 # Delete local build output (node_modules, dist, target) and Docker's build cache. Rarely needed.
 clean-build:

@@ -50,7 +50,7 @@ spec:
   ports:
     - port: 11434
 ---
-# One-shot Job: pulls the model into the PVC, then exits.
+# One-shot Job: pulls the model into the hostPath volume, then exits.
 # Same role as llm-init in compose. Re-running is a no-op (model is already cached).
 apiVersion: batch/v1
 kind: Job

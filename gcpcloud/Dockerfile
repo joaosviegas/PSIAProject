@@ -1,7 +1,6 @@
 # Management node container.
 # Has terraform, ansible, gcloud, kubectl — everything needed to provision
 # and configure the GCP infrastructure from inside a container.
-# Identical to the lab4 mgmt container.
 FROM ubuntu:latest
 
 ENV DEBIAN_FRONTEND=noninteractive

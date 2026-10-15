@@ -1,4 +1,4 @@
-# PSIA Movie Recommendation Hub - local environment (project steps 1-2)
+# PSIA Movie Recommendation Hub - local environment
 #
 #   cp .env.example .env      # then edit the values
 #   just start                # = docker compose up -d --build
@@ -186,7 +186,7 @@ services:
     depends_on:
       llm: { condition: service_healthy }
 
-  # ---------- Monitoring (project step 4) ----------
+  # ---------- Monitoring ----------
   # Prometheus scrapes /actuator/prometheus on every Spring service plus the exporters below.
   prometheus:
     image: prom/prometheus:latest

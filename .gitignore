@@ -1,12 +1,4 @@
-docs/
-CLAUDE.md
 .env
-data/
-!**/src/main/resources/data/
-.claude/
-flake.lock
-flake.nix
-node_modules/dist/
 dist/
 
 # GCP / Terraform — never commit credentials or state

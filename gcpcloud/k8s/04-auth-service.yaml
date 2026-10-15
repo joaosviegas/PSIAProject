@@ -1,7 +1,7 @@
 # auth-service: handles registration and login, issues JWTs.
 #
 # Differs from compose: image pulled from Docker Hub instead of built locally.
-# Replace DOCKER_HUB_USER with your actual username (set in terraform-gcp-variables.tf).
+# DOCKER_HUB_USER is replaced by ansible-deploy-app.yml (-e docker_hub_user=<you>).
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -19,7 +19,7 @@ spec:
     spec:
       containers:
         - name: auth-service
-          image: joaosviegas/g37-auth-service:latest # already pushed to Docker Hub
+          image: DOCKER_HUB_USER/g37-auth-service:latest
           imagePullPolicy: Always
           env:
             - name: SPRING_DATASOURCE_URL
