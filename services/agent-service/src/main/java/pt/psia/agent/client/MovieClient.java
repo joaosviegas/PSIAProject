@@ -11,6 +11,9 @@ import java.time.Duration;
 import java.util.Collection;
 import java.util.List;
 
+/**
+ * A client for the recommendation service.
+ */
 @Component
 public class MovieClient {
 
@@ -18,6 +21,9 @@ public class MovieClient {
 
     private final RestClient restClient;
 
+    /**
+     * @param baseUrl the base URL of the recommendation service
+     */
     public MovieClient(@Value("${recommendation-service.url}") String baseUrl) {
         // These calls sit on the user's request path, so a hung service must fail fast.
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
@@ -26,7 +32,7 @@ public class MovieClient {
         this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
 
-    /** Instant, taste-aware shortlist (genres + likes + dislikes), no LLM involved. */
+    /** Returns personalized movie recommendations for the given user profile. */
     public List<MovieDto> personalized(Collection<String> genres, Collection<Long> liked, Collection<Long> disliked, int limit) {
         return restClient.get()
                 .uri(b -> {
@@ -40,7 +46,7 @@ public class MovieClient {
                 .body(MOVIES);
     }
 
-    /** Random movies from the given genres only. */
+    /** Returns a list of movies that match the given genres, excluding the given movie IDs, up to the given limit. */
     public List<MovieDto> discover(Collection<String> genres, Collection<Long> exclude, int limit) {
         return restClient.get()
                 .uri(b -> {
@@ -53,6 +59,7 @@ public class MovieClient {
                 .body(MOVIES);
     }
 
+    /** Returns a list of candidate movies for the given genres, excluding the given movie IDs, up to the given limit. */
     public List<MovieDto> candidates(Collection<String> genres, Collection<Long> exclude, int limit) {
         return restClient.get()
                 .uri(b -> {
@@ -65,6 +72,7 @@ public class MovieClient {
                 .body(MOVIES);
     }
 
+    /** Returns a list of movies for the given IDs. */
     public List<MovieDto> byIds(Collection<Long> ids) {
         if (ids.isEmpty()) return List.of();
         return restClient.get()
@@ -73,6 +81,7 @@ public class MovieClient {
                 .body(MOVIES);
     }
 
+    /** Returns a list of movies for the given IMDB IDs. */
     private static String join(Collection<Long> ids) {
         return String.join(",", ids.stream().map(String::valueOf).toList());
     }

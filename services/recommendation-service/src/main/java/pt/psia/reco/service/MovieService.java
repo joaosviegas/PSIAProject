@@ -12,21 +12,27 @@ import pt.psia.reco.web.dto.MovieResponse;
 import java.util.*;
 import java.util.stream.Collectors;
 
+/**
+ * Service for managing movies.
+ */
 @Service
 public class MovieService {
 
     private final MovieRepository movieRepository;
 
+    /** Constructs a MovieService with the given MovieRepository. */
     public MovieService(MovieRepository movieRepository) {
         this.movieRepository = movieRepository;
     }
 
+    /** Retrieves a movie by its ID, throwing a 404 error if not found. */
     public MovieResponse getById(Long id) {
         return movieRepository.findById(id)
                 .map(MovieResponse::from)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Movie not found"));
     }
 
+    /** Searches for movies based on various optional filters, returning a paginated result. */
     public Page<MovieResponse> search(String query, String genre,
                                       Integer yearFrom, Integer yearTo,
                                       Double minRating, Pageable pageable) {
@@ -37,6 +43,7 @@ public class MovieService {
         return page.map(MovieResponse::from);
     }
 
+    /** Finds candidate movies based on the given genres, excluding specified movie IDs, and limiting the result size. */
     public List<MovieResponse> candidates(List<String> genres, Collection<Long> excludeIds, int limit) {
         String genresCsv = genres == null ? "" : String.join(",", genres);
         return movieRepository.findCandidates(genresCsv, limit + excludeIds.size()).stream()
@@ -50,11 +57,7 @@ public class MovieService {
     private static final int DISCOVER_MIN_VOTES = 5_000;
     private static final double DISCOVER_MIN_RATING = 6.5;
 
-    /**
-     * Instant, taste-aware ranking (see {@link MovieScorer}). {@code primary} genres are what the person
-     * explicitly chose, {@code secondary} are softer hints (mood, saved profile). Liked/disliked movies
-     * both steer the score and are excluded from the result.
-     */
+    /** Generates personalized movie recommendations based on the user's taste profile, liked and disliked movies, and specified limits. */
     public List<MovieResponse> personalized(Collection<String> primary, Collection<String> secondary,
                                             Collection<Long> liked, Collection<Long> disliked, int limit) {
         Set<Long> seen = new HashSet<>(liked);
@@ -71,7 +74,7 @@ public class MovieService {
         return MovieScorer.rank(pool, taste, limit).stream().map(MovieResponse::from).toList();
     }
 
-    /** Random picks from the given genres, preferring well-rated, well-known titles; tops up with anything if the genre is small. */
+    /** Generates a list of movies for discovery based on specified genres, excluding certain movie IDs, and limiting the result size. */
     public List<MovieResponse> discover(Collection<String> genres, Collection<Long> exclude, int limit) {
         String genresCsv = String.join(",", genres);
         List<Movie> picked = new ArrayList<>(
@@ -84,10 +87,12 @@ public class MovieService {
         return picked.stream().map(MovieResponse::from).toList();
     }
 
+    /** Converts a collection of movie IDs into a comma-separated string for use in SQL queries. */
     private static String csv(Collection<Long> ids) {
         return ids.stream().map(String::valueOf).collect(Collectors.joining(","));
     }
 
+    /** Retrieves movies by their IDs, returning a list of MovieResponse objects. */
     public List<MovieResponse> byIds(Collection<Long> ids) {
         return movieRepository.findAllById(ids).stream().map(MovieResponse::from).toList();
     }

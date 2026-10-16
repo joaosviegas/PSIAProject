@@ -17,17 +17,27 @@ import pt.psia.profile.web.dto.*;
 import java.time.Instant;
 import java.util.*;
 
+/**
+ * Service class for managing user profiles.
+ */
 @Service
 public class ProfileService {
 
     private final ProfileRepository repo;
     private final Counter updatesCounter;
 
+    /**
+     * Constructs a new ProfileService with the given repository and meter registry.
+     *
+     * @param repo the profile repository
+     * @param registry the meter registry for metrics
+     */
     public ProfileService(ProfileRepository repo, MeterRegistry registry) {
         this.repo = repo;
         this.updatesCounter = Counter.builder("profile_updates_total").register(registry);
     }
 
+    /** Returns the profile for the given user ID. */
     @Transactional(readOnly = true)
     public ProfileResponse getProfile(UUID userId) {
         return repo.findById(userId)
@@ -49,10 +59,12 @@ public class ProfileService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Profile not found"));
     }
 
+    /** Truncates a string to the specified maximum length. */
     private static String truncate(String s, int max) {
         return s.length() <= max ? s : s.substring(0, max);
     }
 
+    /** Updates or creates a profile for the given user ID. */
     @Transactional
     public ProfileResponse upsert(UUID userId, String username, ProfileRequest req) {
         var profile = repo.findById(userId).orElse(null);
@@ -75,6 +87,7 @@ public class ProfileService {
         return toResponse(profile);
     }
 
+    /** Browses profiles based on the given criteria. */
     @Transactional(readOnly = true)
     public PageResponse<ProfileSummary> browse(UUID callerId, String q, String genre, Pageable pageable) {
         String pattern = "%" + (q == null ? "" : q.trim().toLowerCase()) + "%";
@@ -85,6 +98,7 @@ public class ProfileService {
                 page.getTotalElements(), page.getTotalPages());
     }
 
+    /** Finds profiles updated since the given timestamp, with pagination. */
     @Transactional(readOnly = true)
     public PageResponse<ProfileResponse> findUpdatedSince(Instant since, int page, int size) {
         var pageable = PageRequest.of(page, size, Sort.by("updatedAt"));
@@ -96,6 +110,7 @@ public class ProfileService {
                 result.getTotalElements(), result.getTotalPages());
     }
 
+    /** Finds profiles similar to the given user ID, up to the specified limit. */
     @Transactional(readOnly = true)
     public List<ProfileResponse> findSimilar(UUID userId, int limit) {
         var profile = repo.findById(userId)
@@ -114,25 +129,30 @@ public class ProfileService {
                 .toList();
     }
 
+    /** Counts the number of shared elements between two sets. */
     private long countShared(Set<?> a, Set<?> b) {
         return a.stream().filter(b::contains).count();
     }
 
+    /** Converts a Profile entity to a ProfileResponse DTO. */
     private ProfileResponse toResponse(Profile p) {
         return new ProfileResponse(p.getUserId().toString(), p.getUsername(), p.getDisplayName(),
                 p.getBio(), List.copyOf(p.getFavoriteGenres()), List.copyOf(p.getFavoriteMovieIds()),
                 List.copyOf(p.getDislikedMovieIds()), p.getUpdatedAt().toString());
     }
 
+    /** Converts a Profile entity to a ProfileSummary DTO. */
     private ProfileSummary toSummary(Profile p) {
         return new ProfileSummary(p.getUserId().toString(), p.getUsername(), p.getDisplayName(),
                 List.copyOf(p.getFavoriteGenres()));
     }
 
+    /** Converts a list to a set, returning an empty set if the list is null. */
     private Set<String> toSet(List<String> list) {
         return list != null ? new HashSet<>(list) : new HashSet<>();
     }
 
+    /** Converts a list of integers to a set, returning an empty set if the list is null. */
     private Set<Integer> toIntSet(List<Integer> list) {
         return list != null ? new HashSet<>(list) : new HashSet<>();
     }

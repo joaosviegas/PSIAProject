@@ -3,9 +3,7 @@ package pt.psia.reco.service;
 import java.util.List;
 
 /**
- * Target type for ChatClient's structured-output .entity() call — Spring AI
- * generates a JSON schema from this record, appends it to the prompt, and
- * parses the model's reply back into it.
+ * Represents the picks returned by the LLM, including a summary and a list of recommended movie titles.
  */
 public record LlmPicks(String summary, List<String> picks) {
 }

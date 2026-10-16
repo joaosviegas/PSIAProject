@@ -13,6 +13,9 @@ import pt.psia.auth.web.dto.UserResponse;
 
 import java.util.UUID;
 
+/**
+ * Service for handling authentication-related operations.
+ */
 @Service
 public class AuthService {
 
@@ -23,6 +26,14 @@ public class AuthService {
     private final Counter loginSuccessCounter;
     private final Counter loginFailureCounter;
 
+    /**
+     * Constructs a new AuthService with the specified dependencies.
+     *
+     * @param userRepository the user repository
+     * @param passwordEncoder the password encoder
+     * @param tokenService the token service
+     * @param registry the meter registry for metrics
+     */
     public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder,
                        TokenService tokenService, MeterRegistry registry) {
         this.userRepository = userRepository;
@@ -33,6 +44,7 @@ public class AuthService {
         this.loginFailureCounter = Counter.builder("auth_logins_total").tag("result", "failure").register(registry);
     }
 
+    /** Registers a new user with the specified username and password. */
     public UserResponse register(String username, String password) {
         if (userRepository.findByUsernameIgnoreCase(username).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Username already taken. Please choose a different one.");
@@ -43,6 +55,7 @@ public class AuthService {
         return new UserResponse(user.getId().toString(), user.getUsername());
     }
 
+    /** Logs in a user with the specified username and password, returning a token if successful. */
     public TokenResponse login(String username, String password) {
         var user = userRepository.findByUsernameIgnoreCase(username)
                 .filter(u -> passwordEncoder.matches(password, u.getPasswordHash()))

@@ -3,6 +3,9 @@ package pt.psia.reco.web;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * REST controller for health check endpoint.
+ */
 @RestController
 public class PingController {
 

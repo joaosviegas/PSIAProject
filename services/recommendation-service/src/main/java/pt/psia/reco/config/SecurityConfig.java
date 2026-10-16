@@ -15,10 +15,14 @@ import org.springframework.security.web.SecurityFilterChain;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Security configuration for the application, including JWT authentication and authorization rules.
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
+    /** Configuration for the security filter chain. */
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
@@ -34,6 +38,7 @@ public class SecurityConfig {
                 .build();
     }
 
+    /** Bean for decoding JWT tokens using a secret key. */
     @Bean
     JwtDecoder jwtDecoder(@Value("${jwt.secret}") String secret) {
         SecretKeySpec key = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");

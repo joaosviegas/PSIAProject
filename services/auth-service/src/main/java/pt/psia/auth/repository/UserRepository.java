@@ -7,6 +7,9 @@ import pt.psia.auth.domain.User;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Repository interface for managing User entities.
+ */
 public interface UserRepository extends JpaRepository<User, UUID> {
 
     @Query("SELECT u FROM User u WHERE lower(u.username) = lower(:username)")

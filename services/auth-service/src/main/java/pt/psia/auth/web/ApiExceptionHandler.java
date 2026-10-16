@@ -6,6 +6,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.server.ResponseStatusException;
 
+/**
+ * A global exception handler for the API.
+ */
 @RestControllerAdvice
 public class ApiExceptionHandler {
 

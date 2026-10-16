@@ -2,6 +2,9 @@ package pt.psia.agent.client.dto;
 
 import java.util.List;
 
+/**
+ * A DTO for a user profile.
+ */
 public record ProfileDto(
         String userId,
         String username,

@@ -45,6 +45,15 @@ public class FeedService {
     private final MeterRegistry registry;
     private final Counter failedBuilds;
 
+    /**
+     * Creates a new feed service.
+     *
+     * @param profileClient the profile client
+     * @param movieClient the movie client
+     * @param feedBuilder the feed builder
+     * @param feedStore the feed store
+     * @param registry the meter registry
+     */
     public FeedService(ProfileClient profileClient, MovieClient movieClient, FeedBuilder feedBuilder, FeedStore feedStore,
                        MeterRegistry registry) {
         this.profileClient = profileClient;
@@ -56,6 +65,7 @@ public class FeedService {
         Gauge.builder("feed_builds_in_progress", building, Set::size).register(registry);
     }
 
+    /** Returns the feed for the given user ID, building it in the background if necessary. */
     public FeedResponse get(String userId) {
         Optional<ProfileDto> found = profileClient.find(UUID.fromString(userId));
         if (found.isEmpty() || !hasPreferences(found.get())) {
@@ -88,7 +98,7 @@ public class FeedService {
         return new FeedResponse(FeedResponse.BUILDING, null, null, false, quick, discover, List.of());
     }
 
-    /** Kick off a rebuild right away (e.g. right after the profile was saved). */
+    /** Refreshes the feed for the given user ID if they have preferences, building it in the background. */
     public void refresh(String userId) {
         profileClient.find(UUID.fromString(userId)).filter(this::hasPreferences).ifPresent(this::rebuildAsync);
     }
@@ -123,10 +133,12 @@ public class FeedService {
         }
     }
 
+    /** Increments the feed request counter for the given status. */
     private void countRequest(String status) {
         registry.counter("feed_requests_total", "status", status).increment();
     }
 
+    /** Returns true if the given profile has preferences (favorite genres). */
     boolean hasPreferences(ProfileDto profile) {
         return !orEmpty(profile.favoriteGenres()).isEmpty();
     }
@@ -136,16 +148,19 @@ public class FeedService {
         executor.shutdownNow();
     }
 
+    /** Returns the favorite genres of the given profile, or an empty list if none. */
     private static List<String> genres(ProfileDto profile) {
         return orEmpty(profile.favoriteGenres());
     }
 
+    /** Returns the set of movie IDs that the given profile has seen (liked or disliked). */
     private static Set<Long> seen(ProfileDto profile) {
         Set<Long> seen = new HashSet<>(orEmpty(profile.favoriteMovieIds()));
         seen.addAll(orEmpty(profile.dislikedMovieIds()));
         return seen;
     }
 
+    /** Returns an empty list if the given list is null, or the list itself otherwise. */
     private static <T> List<T> orEmpty(List<T> list) {
         return list == null ? List.of() : list;
     }

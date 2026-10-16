@@ -5,6 +5,9 @@ import pt.psia.agent.client.dto.MovieDto;
 import java.time.Instant;
 import java.util.List;
 
+/**
+ * A feed of personalized movie recommendations.
+ */
 public record Feed(
         String userId,
         Instant generatedAt,

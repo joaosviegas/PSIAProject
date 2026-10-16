@@ -10,6 +10,7 @@ import java.util.Map;
  */
 public final class Moods {
 
+    /** Mapping of moods to corresponding IMDb genres. */
     private static final Map<String, List<String>> GENRES = Map.of(
             "something uplifting", List.of("Comedy", "Family", "Animation", "Musical", "Music", "Adventure"),
             "something intense", List.of("Thriller", "Action", "Crime", "War", "Mystery"),
@@ -19,6 +20,7 @@ public final class Moods {
             "something funny", List.of("Comedy", "Animation", "Family")
     );
 
+    /** Returns the list of genres corresponding to the given mood. */
     public static List<String> genresFor(String mood) {
         if (mood == null || mood.isBlank()) {
             return List.of();
@@ -26,6 +28,7 @@ public final class Moods {
         return GENRES.getOrDefault(mood.trim().toLowerCase(Locale.ROOT), List.of());
     }
 
+    /** Private constructor to prevent instantiation. */
     private Moods() {
     }
 }

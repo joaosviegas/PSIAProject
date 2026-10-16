@@ -16,6 +16,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * A client for the profile service.
+ */
 @Component
 public class ProfileClient {
 
@@ -23,6 +26,9 @@ public class ProfileClient {
 
     private final RestClient restClient;
 
+    /**
+     * @param baseUrl the base URL of the profile service
+     */
     public ProfileClient(@Value("${profile-service.url}") String baseUrl) {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(Duration.ofSeconds(2));
@@ -30,7 +36,7 @@ public class ProfileClient {
         this.restClient = RestClient.builder().baseUrl(baseUrl).requestFactory(factory).build();
     }
 
-    /** Empty (instead of an exception) when the user has no profile yet. */
+    /** Returns the profile for the given user ID, or empty if the user has no profile yet. */
     public Optional<ProfileDto> find(UUID userId) {
         try {
             return Optional.ofNullable(get(userId));
@@ -39,6 +45,7 @@ public class ProfileClient {
         }
     }
 
+    /** Returns all profiles updated since the given timestamp, or all profiles if {@code since} is null. */
     public List<ProfileDto> updatedSince(Instant since) {
         List<ProfileDto> all = new ArrayList<>();
         int page = 0;
@@ -59,10 +66,12 @@ public class ProfileClient {
         return all;
     }
 
+    /** Returns the profile for the given user ID. Throws if the user has no profile yet. */
     public ProfileDto get(UUID userId) {
         return restClient.get().uri("/internal/profiles/{id}", userId).retrieve().body(ProfileDto.class);
     }
 
+    /** Returns a list of profiles similar to the given user ID, up to the given limit. */
     public List<ProfileDto> similar(UUID userId, int limit) {
         return restClient.get()
                 .uri(b -> b.path("/internal/profiles/similar/{id}").queryParam("limit", limit).build(userId))

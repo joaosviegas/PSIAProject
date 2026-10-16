@@ -12,6 +12,9 @@ import pt.psia.profile.domain.Profile;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * Repository interface for managing Profile entities.
+ */
 public interface ProfileRepository extends JpaRepository<Profile, UUID> {
 
     @Query("SELECT DISTINCT p FROM Profile p LEFT JOIN p.favoriteGenres g " +

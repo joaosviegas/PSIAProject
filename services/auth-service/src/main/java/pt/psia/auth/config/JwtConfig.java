@@ -10,6 +10,9 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Configuration for JWT encoding.
+ */
 @Configuration
 public class JwtConfig {
 

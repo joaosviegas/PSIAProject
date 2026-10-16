@@ -16,9 +16,7 @@ import java.util.List;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Pre-warms feeds: profiles changed since the last tick get their AI feed built in the
- * background, so the next visit is already "ready". Correctness doesn't depend on this
- * running — {@code GET /api/feed} detects a missing/stale feed and builds it on demand.
+ * Checks for updated profiles and queues feed rebuilds for them.
  */
 @Component
 public class FeedAgent {
@@ -32,6 +30,12 @@ public class FeedAgent {
     private final Counter failedTicks;
     private final Counter profilesQueued;
 
+    /**
+     * @param profileClient the client to fetch updated profiles from
+     * @param feedService   the service to queue feed rebuilds with
+     * @param feedStore     the store to persist the last run timestamp
+     * @param registry      the metrics registry to register counters with
+     */
     public FeedAgent(ProfileClient profileClient, FeedService feedService, FeedStore feedStore, MeterRegistry registry) {
         this.profileClient = profileClient;
         this.feedService = feedService;
@@ -41,6 +45,9 @@ public class FeedAgent {
         this.profilesQueued = Counter.builder("agent_profiles_queued_total").register(registry);
     }
 
+    /**
+     * The main entry point for the agent. This method is called periodically by the Spring scheduler.
+     */
     @Scheduled(fixedDelayString = "${agent.interval-seconds}", initialDelay = 30, timeUnit = TimeUnit.SECONDS)
     public void tick() {
         Instant start = Instant.now();

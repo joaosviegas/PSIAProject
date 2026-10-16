@@ -5,6 +5,9 @@ import pt.psia.reco.domain.Movie;
 import java.math.BigDecimal;
 import java.util.List;
 
+/**
+ * DTO representing a movie response.
+ */
 public record MovieResponse(
         Long id,
         String imdbId,

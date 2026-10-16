@@ -14,10 +14,19 @@ public class LlmWarmup {
 
     private final LlmClient llmClient;
 
+    /**
+     * Constructs a new LlmWarmup with the given LlmClient.
+     *
+     * @param llmClient the LlmClient to use for warming up the model
+     */
     public LlmWarmup(LlmClient llmClient) {
         this.llmClient = llmClient;
     }
 
+    /**
+     * Warms up the LLM by making a call to it after the application is ready.
+     * This method runs in a separate virtual thread and logs the outcome.
+     */
     @EventListener(ApplicationReadyEvent.class)
     void warm() {
         Thread.ofVirtual().name("llm-warmup").start(() -> {

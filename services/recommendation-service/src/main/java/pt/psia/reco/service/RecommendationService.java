@@ -19,12 +19,8 @@ import java.util.Optional;
 import java.util.regex.Pattern;
 
 /**
- * Two-step recommendations so the UI never waits on the language model:
- * <ol>
- *   <li>{@link #quick} — taste-aware ranking straight from the database (milliseconds, no LLM);</li>
- *   <li>{@link #recommend} — the same shortlist, re-ranked and explained by the LLM, with a hard
- *       time ceiling and a fallback to step 1.</li>
- * </ol>
+ * Service for generating movie recommendations based on user preferences, mood, and notes.
+ * It interacts with the LLM client and profile client to provide personalized recommendations.
  */
 @Service
 public class RecommendationService {
@@ -45,6 +41,14 @@ public class RecommendationService {
     private final Counter quickCounter;
     private final Counter cachedCounter;
 
+    /**
+     * Constructs a new RecommendationService with the given dependencies and registers counters for metrics.
+     * 
+     * @param movieService the MovieService for fetching movie data
+     * @param llmClient the LlmClient for interacting with the large language model
+     * @param profileClient the ProfileClient for fetching user profile information
+     * @param registry the MeterRegistry for recording metrics
+     */
     public RecommendationService(MovieService movieService, LlmClient llmClient, ProfileClient profileClient,
                                  MeterRegistry registry) {
         this.movieService = movieService;
@@ -56,35 +60,37 @@ public class RecommendationService {
         this.cachedCounter = Counter.builder("recommendations_total").tag("mode", "cached").register(registry);
     }
 
+    /** A shortlist of movies, genres, and a user's profile. */
     private record Shortlist(List<MovieResponse> movies, List<String> genres, Optional<ProfileSnapshot> profile) {
     }
 
-    /** Instant, no LLM. */
+    /** Returns a quick recommendation based on the user's preferences and the available movies. (No LLM) */
     public RecommendationResponse quick(RecommendationRequest request, String bearerToken) {
         Shortlist shortlist = shortlist(request, bearerToken);
         quickCounter.increment();
         return heuristic(request, shortlist);
     }
 
-    /**
-     * @param bearerToken the caller's raw "Bearer &lt;token&gt;" header value,
-     *                     forwarded to profile-service; null if the request
-     *                     somehow reached here unauthenticated.
-     */
+    /** Returns a recommendation based on the user's preferences and the available movies, using the LLM. */
     public RecommendationResponse recommend(RecommendationRequest request, String bearerToken) {
+        // Check the cache first to avoid unnecessary LLM calls for repeated requests.
         String cacheKey = cacheKey(request, bearerToken);
+
+        // If the recommendation is already cached, return it immediately.
         RecommendationResponse cached = cache.get(cacheKey);
         if (cached != null) {
             cachedCounter.increment();
             return cached;
         }
 
+        // Generate a shortlist of movies based on the user's preferences and profile.
         Shortlist shortlist = shortlist(request, bearerToken);
         if (shortlist.movies().isEmpty()) {
             fallbackCounter.increment();
             return heuristic(request, shortlist);
         }
 
+        // Attempt to get recommendations from the LLM based on the shortlist and user request.
         try {
             LlmPicks llmPicks = llmClient.pickMovies(buildPrompt(request, shortlist));
             List<String> picks = llmPicks == null || llmPicks.picks() == null ? List.of() : llmPicks.picks();
@@ -117,7 +123,9 @@ public class RecommendationService {
                 fallback.movies(), false);
     }
 
+    /** Constructs a Shortlist of movies based on the user's preferences, mood, and profile. */
     private Shortlist shortlist(RecommendationRequest request, String bearerToken) {
+        // Fetch the user's profile information using the provided bearer token.
         Optional<ProfileSnapshot> profile = profileClient.fetchProfile(bearerToken);
         List<String> picked = clean(request.genres());
         List<String> saved = profile.map(ProfileSnapshot::genres).orElse(List.of());
@@ -129,12 +137,14 @@ public class RecommendationService {
             secondary.addAll(saved);
         }
 
+        // Fetch the user's liked and disliked movies from their profile, if available.
         List<Long> liked = profile.map(ProfileSnapshot::liked).orElse(List.of());
         List<Long> disliked = profile.map(ProfileSnapshot::disliked).orElse(List.of());
         List<MovieResponse> movies = movieService.personalized(primary, secondary, liked, disliked, SHORTLIST_SIZE);
         return new Shortlist(movies, primary, profile);
     }
 
+    /** Returns a fallback recommendation based on the user's preferences and the available movies, without using the LLM. */
     private RecommendationResponse heuristic(RecommendationRequest request, Shortlist shortlist) {
         if (shortlist.movies().isEmpty()) {
             return new RecommendationResponse(
@@ -144,6 +154,7 @@ public class RecommendationService {
                 shortlist.movies().stream().limit(PICKS_REQUESTED).toList(), false);
     }
 
+    /** Generates a description of the recommendation based on the user's request and the shortlist of movies. */
     private static String describe(RecommendationRequest request, Shortlist shortlist) {
         List<String> parts = new ArrayList<>(shortlist.genres());
         if (request.mood() != null && !request.mood().isBlank()) {
@@ -154,10 +165,12 @@ public class RecommendationService {
                 : "Best matches for " + String.join(", ", parts) + ", tuned to your taste.";
     }
 
+    /** Cleans a list of strings by removing null or blank values and trimming whitespace. */
     private static List<String> clean(List<String> values) {
         return values == null ? List.of() : values.stream().filter(v -> v != null && !v.isBlank()).map(String::trim).toList();
     }
 
+    /** Generates a cache key for the recommendation request based on the user's preferences and bearer token. */
     private static String cacheKey(RecommendationRequest request, String bearerToken) {
         return String.join("|",
                 bearerToken == null ? "" : bearerToken,
@@ -166,14 +179,17 @@ public class RecommendationService {
                 request.notes() == null ? "" : request.notes().trim().toLowerCase(Locale.ROOT));
     }
 
+    /** Builds a prompt for the LLM based on the user's request and the shortlist of movies. */
     private String buildPrompt(RecommendationRequest request, Shortlist shortlist) {
         StringBuilder sb = new StringBuilder();
+        // The prompt instructs the LLM to select the best-fitting movies from the provided candidates, based on the user's preferences and profile.
         sb.append("You are a movie recommendation assistant. From the CANDIDATES list only, pick the ")
                 .append(PICKS_REQUESTED)
                 .append(" that best fit this user (never invent a title). ")
                 .append("Each entry in \"picks\" must be copied exactly from a candidate's title, without the year. ")
                 .append("Write \"summary\" as one short sentence addressed to the user.\n\n");
 
+        // Include the user's preferences, mood, and notes in the prompt to guide the LLM's recommendations.
         sb.append("Genres: ").append(shortlist.genres().isEmpty() ? "any" : String.join(", ", shortlist.genres())).append("\n");
         sb.append("Mood: ").append(request.mood() == null || request.mood().isBlank() ? "not specified" : request.mood()).append("\n");
         if (request.notes() != null && !request.notes().isBlank()) {
@@ -182,7 +198,9 @@ public class RecommendationService {
         shortlist.profile().map(ProfileSnapshot::bio).filter(b -> !b.isBlank())
                 .ifPresent(b -> sb.append("About the user: ").append(b).append("\n"));
 
+        // Include the list of candidate movies in the prompt for the LLM to choose from.
         sb.append("\nCANDIDATES:\n");
+        // Each candidate is listed with its title, year, genres, and rating to provide context for the LLM's selection.
         for (MovieResponse m : shortlist.movies()) {
             sb.append("- ").append(m.title());
             if (m.startYear() != null) {
@@ -194,9 +212,11 @@ public class RecommendationService {
             }
             sb.append("\n");
         }
+        // The prompt ends with a request for the LLM to provide its recommendations in JSON format, specifying the picks and summary.
         return sb.toString();
     }
 
+    /** Matches a picked movie title to a candidate in the list. */
     private Optional<MovieResponse> matchCandidate(String pickTitle, List<MovieResponse> candidates) {
         String unquoted = pickTitle.trim().replaceAll("^[\"']+|[\"']+$", "").trim();
         String normalized = TRAILING_YEAR.matcher(unquoted).replaceFirst("").trim().toLowerCase(Locale.ROOT);

@@ -9,11 +9,15 @@ import pt.psia.reco.domain.Movie;
 
 import java.util.List;
 
+/**
+ * Repository interface for managing Movie entities. Provides methods for searching and retrieving movies based on various criteria.
+ */
 public interface MovieRepository extends JpaRepository<Movie, Long> {
 
+    /** Returns the number of movies in the repository. */
     long countBy();
 
-    // ponytail: single native query handles all filters via IS NULL bypass; add full-text search if ILIKE gets slow on 100k+ rows
+    /** Search for movies based on various optional filters. If a filter is null, it is ignored. */
     @Query(value = """
             SELECT * FROM movies m
             WHERE (:query IS NULL OR m.title ILIKE CONCAT('%', :query, '%')
@@ -54,11 +58,7 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
             """, nativeQuery = true)
     List<Movie> findCandidates(@Param("genresCsv") String genresCsv, @Param("limit") int limit);
 
-    /**
-     * Scoring pool: movies overlapping the given genres (exact tag match, so "Music" doesn't
-     * pull in "Musical"), best IMDb-style weighted rating first. {@code genresCsv = ''} means any genre.
-     * {@code excludeCsv} is a comma-separated id list ('' = nothing excluded).
-     */
+    /** Returns a pool of movies matching the given genres, excluding the specified movie IDs, ordered by a weighted score based on rating and votes. */
     @Query(value = """
             SELECT * FROM movies m
             WHERE (:genresCsv = '' OR string_to_array(m.genres, ';') && string_to_array(:genresCsv, ','))
@@ -71,7 +71,7 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
                          @Param("excludeCsv") String excludeCsv,
                          @Param("limit") int limit);
 
-    /** Random movies from the chosen genres only — the "discover" half of the feed. */
+    /** Random movies from the chosen genres only - the "discover" half of the feed. */
     @Query(value = """
             SELECT * FROM movies m
             WHERE (:genresCsv = '' OR string_to_array(m.genres, ';') && string_to_array(:genresCsv, ','))

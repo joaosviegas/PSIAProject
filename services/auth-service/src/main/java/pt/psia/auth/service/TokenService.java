@@ -11,17 +11,27 @@ import pt.psia.auth.domain.User;
 
 import java.time.Instant;
 
+/**
+ * Service for generating JWT tokens for authenticated users.
+ */
 @Service
 public class TokenService {
 
     private final JwtEncoder encoder;
     private final long ttlMinutes;
 
+    /**
+     * Constructs a new TokenService with the specified JWT encoder and token time-to-live.
+     *
+     * @param encoder    the JWT encoder
+     * @param ttlMinutes the time-to-live for tokens in minutes
+     */
     public TokenService(JwtEncoder encoder, @Value("${jwt.ttl-minutes}") long ttlMinutes) {
         this.encoder = encoder;
         this.ttlMinutes = ttlMinutes;
     }
 
+    /** Generates a JWT token for the specified user. */
     public String generateToken(User user) {
         var now = Instant.now();
         var claims = JwtClaimsSet.builder()
@@ -34,6 +44,7 @@ public class TokenService {
         return encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
     }
 
+    /** Returns the time-to-live for tokens in seconds. */
     public long getTtlSeconds() {
         return ttlMinutes * 60;
     }

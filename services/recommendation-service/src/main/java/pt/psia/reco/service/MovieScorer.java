@@ -6,17 +6,7 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 /**
- * Content-based ranking, pure Java (no DB, no LLM) so it is instant and unit-testable.
- * It turns "what the user picked / liked / disliked" into a score per candidate:
- *
- * <ul>
- *   <li>genre affinity — picked genres weigh most, mood/background genres less, genres of liked
- *       movies add up (capped), genres of disliked movies subtract;</li>
- *   <li>quality — IMDb-style weighted rating, so a 9.9 with 12 votes doesn't beat a 8.6 with 1M;</li>
- *   <li>popularity — gentle log scale tie-breaker;</li>
- *   <li>people — shares a director / cast member with something the user liked;</li>
- *   <li>era — close to the typical release year of the movies the user liked.</li>
- * </ul>
+ * Utility class for scoring and ranking movies based on user taste and preferences.
  */
 public final class MovieScorer {
 
@@ -31,9 +21,17 @@ public final class MovieScorer {
     private static final double PRIOR_MEAN = 6.5;
     private static final Pattern NAME_SPLIT = Pattern.compile("\\s*[|,;]\\s*");
 
+    /** 
+     * Represents a user's taste profile, including genre weights, preferred directors and stars, and median year of liked movies.
+     * @param genreWeights A map of genres to their corresponding weights based on user preferences.
+     * @param directors A set of preferred directors based on liked movies.
+     * @param stars A set of preferred stars based on liked movies.
+     * @param medianYear The median year of the user's liked movies, used for era-based scoring.
+     */
     public record Taste(Map<String, Double> genreWeights, Set<String> directors, Set<String> stars, Integer medianYear) {
     }
 
+    /** Constructs a Taste profile based on the user's primary and secondary genre preferences, liked movies, and disliked movies. */
     public static Taste taste(Collection<String> primary, Collection<String> secondary,
                               Collection<Movie> liked, Collection<Movie> disliked) {
         Map<String, Double> weights = new HashMap<>();
@@ -67,6 +65,7 @@ public final class MovieScorer {
         return new Taste(weights, directors, stars, median);
     }
 
+    /** Ranks the given pool of movies based on the user's taste profile, returning the top {@code limit} movies. */
     public static List<Movie> rank(Collection<Movie> pool, Taste taste, int limit) {
         return pool.stream()
                 .sorted(Comparator
@@ -87,38 +86,48 @@ public final class MovieScorer {
                 .toList();
     }
 
+    /** Computes a score for a movie based on the user's taste profile, considering genre affinity, quality, popularity, people involved, and era. */
     static double score(Movie m, Taste t) {
         List<String> genres = m.getGenreList();
+        // Average weight of the movie's genres according to the user's taste, normalized by the number of genres.
         double affinity = 0;
         for (String g : genres) {
             affinity += t.genreWeights().getOrDefault(g, 0.0);
         }
         affinity = genres.isEmpty() ? 0 : affinity / Math.sqrt(genres.size());
 
+        // Quality is based on a weighted rating that combines the movie's average rating and number of votes, normalized to a 0-1 scale.
         double quality = clamp((weightedRating(m) - 5.0) / 4.0);
+        // Popularity is based on the logarithm of the number of votes, normalized to a 0-1 scale.
         double popularity = clamp(Math.log10((m.getNumVotes() == null ? 0 : m.getNumVotes()) + 1) / 6.5);
 
+        // People score is based on the overlap of directors and stars with the user's preferred directors and stars, with a maximum contribution of 1.2.
         double people = 0;
         if (names(m.getDirectors()).stream().anyMatch(t.directors()::contains)) {
             people += 0.6;
         }
+        // Count shared stars and add to the people score, with a maximum contribution of 0.6.
         long sharedStars = names(m.getStars()).stream().filter(t.stars()::contains).count();
         people += Math.min(0.6, sharedStars * 0.2);
 
+        // Era score is based on how close the movie's release year is to the median year of the user's liked movies, with a maximum contribution of 1.0.
         double era = 0;
         if (t.medianYear() != null && m.getStartYear() != null) {
             era = clamp(1 - Math.abs(m.getStartYear() - t.medianYear()) / 40.0);
         }
 
+        // Final score is a weighted sum of the individual components, reflecting the user's taste and preferences.
         return 2.0 * affinity + 1.6 * quality + 0.4 * popularity + 1.0 * people + 0.3 * era;
     }
 
+    /** Computes a weighted rating for a movie, combining its average rating and number of votes with prior assumptions to avoid bias from low-vote movies. */
     static double weightedRating(Movie m) {
         double votes = m.getNumVotes() == null ? 0 : m.getNumVotes();
         double rating = m.getAvgRating() == null ? PRIOR_MEAN : m.getAvgRating().doubleValue();
         return (votes / (votes + PRIOR_VOTES)) * rating + (PRIOR_VOTES / (votes + PRIOR_VOTES)) * PRIOR_MEAN;
     }
 
+    /** Extracts a set of normalized names from a raw string, splitting by common delimiters and converting to lowercase. */
     private static Set<String> names(String raw) {
         if (raw == null || raw.isBlank()) {
             return Set.of();
@@ -132,10 +141,12 @@ public final class MovieScorer {
         return out;
     }
 
+    /** Clamps a value to the range [0, 1]. */
     private static double clamp(double v) {
         return Math.max(0, Math.min(1, v));
     }
 
+    /** Private constructor to prevent instantiation of this utility class. */
     private MovieScorer() {
     }
 }

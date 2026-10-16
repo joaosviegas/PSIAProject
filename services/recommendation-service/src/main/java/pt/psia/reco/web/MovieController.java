@@ -9,21 +9,31 @@ import pt.psia.reco.web.dto.MovieResponse;
 
 import java.util.List;
 
+/**
+ * REST controller for movie-related endpoints.
+ */
 @RestController
 @RequestMapping("/api/movies")
 public class MovieController {
 
     private final MovieService movieService;
 
+    /**
+     * Constructs a new MovieController with the specified MovieService.
+     *
+     * @param movieService the MovieService to use
+     */
     public MovieController(MovieService movieService) {
         this.movieService = movieService;
     }
 
+    /** Gets a movie by its ID. */
     @GetMapping("/{id}")
     public MovieResponse getById(@PathVariable Long id) {
         return movieService.getById(id);
     }
 
+    /** Searches for movies based on various criteria. */
     @GetMapping
     public Page<MovieResponse> search(
             @RequestParam(required = false) String query,
@@ -39,6 +49,7 @@ public class MovieController {
                 PageRequest.of(Math.max(page, 0), safeSize));
     }
 
+    /** Gets a list of all available genres. */
     @GetMapping("/genres")
     public List<String> genres() {
         return GenreCatalog.ALL;

@@ -10,15 +10,8 @@ import java.time.Duration;
 import java.util.concurrent.*;
 
 /**
- * Thin wrapper around Spring AI's ChatClient. Structured-output parsing
- * (.entity()) is handled by Spring AI: it generates a JSON schema from
- * LlmPicks, appends it to the prompt, and deserializes the model's reply.
- * Ollama connection details (base-url, model) live in application.yaml
- * under spring.ai.ollama.*.
- *
- * Interactive calls have a hard ceiling ({@code llm.interactive-timeout-seconds}) that does
- * not depend on the HTTP client's read timeout: past it the caller falls back to the instant
- * heuristic ranking instead of leaving the user staring at a spinner.
+ * Client for interacting with a large language model (LLM) via the ChatClient.
+ * Provides methods to pick movies based on prompts and to warm up the model.
  */
 @Component
 public class LlmClient {
@@ -26,12 +19,20 @@ public class LlmClient {
     private final ChatClient chatClient;
     private final long timeoutSeconds;
     private final MeterRegistry registry;
+    /** The executor service for running LLM calls in the background. */
     private final ExecutorService executor = Executors.newCachedThreadPool(r -> {
         Thread t = new Thread(r, "llm-call");
         t.setDaemon(true);
         return t;
     });
 
+    /**
+     * Constructs a new LlmClient with the given ChatClient, timeout, and MeterRegistry.
+     *
+     * @param chatClient    the ChatClient to use for interacting with the LLM
+     * @param timeoutSeconds the timeout in seconds for LLM responses
+     * @param registry      the MeterRegistry for recording metrics
+     */
     public LlmClient(ChatClient chatClient, @Value("${llm.interactive-timeout-seconds:25}") long timeoutSeconds,
                      MeterRegistry registry) {
         this.chatClient = chatClient;
@@ -40,9 +41,10 @@ public class LlmClient {
     }
 
     /**
-     * @throws RuntimeException if the model is unreachable, too slow, or its reply
-     *                           can't be parsed into LlmPicks — callers should catch
-     *                           this and fall back.
+     * Picks movies based on the given prompt by sending a request to the LLM.
+     * The method waits for a response up to the specified timeout.
+     *
+     * @throws IllegalStateException if the LLM does not respond in time or if an error occurs during the call
      */
     public LlmPicks pickMovies(String prompt) {
         Future<LlmPicks> call = executor.submit(() -> chatClient.prompt(prompt).call().entity(LlmPicks.class));

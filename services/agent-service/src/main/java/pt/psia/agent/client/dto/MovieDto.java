@@ -3,6 +3,9 @@ package pt.psia.agent.client.dto;
 import java.math.BigDecimal;
 import java.util.List;
 
+/**
+ * A DTO for a movie.
+ */
 public record MovieDto(
         Long id,
         String imdbId,

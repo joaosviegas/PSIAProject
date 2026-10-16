@@ -17,10 +17,14 @@ import org.springframework.security.web.SecurityFilterChain;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 
+/**
+ * Security configuration for the authentication service.
+ */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
+    /** Configures the security filter chain. */
     @Bean
     SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         return http
@@ -37,12 +41,14 @@ public class SecurityConfig {
                 .build();
     }
 
+    /** Configures the JWT encoder with the given secret. */
     @Bean
     JwtDecoder jwtDecoder(@Value("${jwt.secret}") String secret) {
         var key = new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256");
         return NimbusJwtDecoder.withSecretKey(key).build();
     }
 
+    /** Configures the password encoder to use BCrypt hashing. */
     @Bean
     PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();

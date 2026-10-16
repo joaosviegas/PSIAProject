@@ -20,7 +20,7 @@ import java.util.List;
 /**
  * Loads src/main/resources/data/movies.csv (the enriched dataset) into the
  * movies table the first time the table is empty. Safe to run on every
- * startup — it's a no-op once the table has rows.
+ * startup - it's a no-op once the table has rows.
  */
 @Component
 public class MovieDataLoader implements CommandLineRunner {
@@ -31,24 +31,36 @@ public class MovieDataLoader implements CommandLineRunner {
 
     private final JdbcTemplate jdbcTemplate;
 
+    /**
+     * Constructs a new MovieDataLoader with the given JdbcTemplate.
+     *
+     * @param jdbcTemplate the JdbcTemplate to use for database operations
+     */
     public MovieDataLoader(JdbcTemplate jdbcTemplate) {
         this.jdbcTemplate = jdbcTemplate;
     }
 
+    /**
+     * Loads the movie catalog from the CSV file into the database if the
+     * movies table is empty. This method is called on application startup.
+     */
     @Override
     public void run(String... args) {
+        // Check if the movies table already has rows
         Long existing = jdbcTemplate.queryForObject("SELECT count(*) FROM movies", Long.class);
         if (existing != null && existing > 0) {
             log.info("movies table already has {} rows, skipping CSV load", existing);
             return;
         }
 
+        // Load the CSV file from the classpath
         ClassPathResource resource = new ClassPathResource(CSV_PATH);
         if (!resource.exists()) {
             log.warn("No {} found on the classpath — movie catalog will be empty.", CSV_PATH);
             return;
         }
 
+        // Read and parse the CSV file, inserting rows into the database in batches
         log.info("Loading movie catalog from {}...", CSV_PATH);
         int total = 0;
         try (Reader reader = new InputStreamReader(resource.getInputStream(), StandardCharsets.UTF_8);
@@ -89,6 +101,7 @@ public class MovieDataLoader implements CommandLineRunner {
         }
     }
 
+    /** Inserts a batch of movie data into the database. */
     private void insertBatch(List<Object[]> batch) {
         jdbcTemplate.batchUpdate(
                 "INSERT INTO movies (imdb_id, title, start_year, genres, avg_rating, num_votes, " +
@@ -98,18 +111,21 @@ public class MovieDataLoader implements CommandLineRunner {
         );
     }
 
+    /** Parses a string as an Integer, returning null if the string is null, blank, or not a valid integer. */
     private Integer parseIntOrNull(String s) {
         if (s == null || s.isBlank()) return null;
         try { return Integer.parseInt(s.trim()); }
         catch (NumberFormatException e) { return null; }
     }
 
+    /** Parses a string as a BigDecimal, returning null if the string is null, blank, or not a valid decimal. */
     private BigDecimal parseDecimalOrNull(String s) {
         if (s == null || s.isBlank()) return null;
         try { return new BigDecimal(s.trim()); }
         catch (NumberFormatException e) { return null; }
     }
 
+    /** Returns null if the string is null or blank, otherwise returns the string itself. */
     private String nullIfEmpty(String s) {
         return (s == null || s.isBlank()) ? null : s;
     }

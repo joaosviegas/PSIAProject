@@ -12,12 +12,20 @@ import pt.psia.reco.service.RecommendationService;
 import pt.psia.reco.web.dto.RecommendationRequest;
 import pt.psia.reco.web.dto.RecommendationResponse;
 
+/**
+ * REST controller for recommendation-related endpoints.
+ */
 @RestController
 @RequestMapping("/api/recommendations")
 public class RecommendationController {
 
     private final RecommendationService recommendationService;
 
+    /**
+     * Constructs a new RecommendationController with the specified RecommendationService.
+     *
+     * @param recommendationService the RecommendationService to use
+     */
     public RecommendationController(RecommendationService recommendationService) {
         this.recommendationService = recommendationService;
     }
@@ -46,6 +54,7 @@ public class RecommendationController {
         return ResponseEntity.ok(recommendationService.quick(request, bearer(jwt)));
     }
 
+    /** Checks if the recommendation request is empty. */
     private static boolean isEmpty(RecommendationRequest request) {
         boolean hasGenres = request.genres() != null && !request.genres().isEmpty();
         boolean hasMood = request.mood() != null && !request.mood().isBlank();
@@ -53,8 +62,7 @@ public class RecommendationController {
         return !hasGenres && !hasMood && !hasNotes;
     }
 
-    // jwt is only null if this somehow ran unauthenticated, which the
-    // security config's anyRequest().authenticated() rule prevents.
+    /** Converts the Jwt to a bearer token string. */
     private static String bearer(Jwt jwt) {
         return jwt != null ? "Bearer " + jwt.getTokenValue() : null;
     }
