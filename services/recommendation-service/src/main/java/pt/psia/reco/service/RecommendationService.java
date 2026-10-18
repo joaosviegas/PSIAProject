@@ -31,6 +31,8 @@ public class RecommendationService {
     private static final int PICKS_REQUESTED = 5;
     /** Overviews are cut to this length so they add context without blowing up the prompt. */
     private static final int OVERVIEW_MAX_CHARS = 150;
+    /** How many liked/disliked movies are shown to the LLM as taste examples. */
+    private static final int TASTE_EXAMPLES = 5;
     // The candidate list shows "Title (Year)", and small models usually copy the year too.
     private static final Pattern TRAILING_YEAR = Pattern.compile("\\s*\\(\\d{4}\\)\\s*$");
 
@@ -63,7 +65,8 @@ public class RecommendationService {
     }
 
     /** A shortlist of movies, genres, and a user's profile. */
-    private record Shortlist(List<MovieResponse> movies, List<String> genres, Optional<ProfileSnapshot> profile) {
+    private record Shortlist(List<MovieResponse> movies, List<String> genres, Optional<ProfileSnapshot> profile,
+                             List<MovieResponse> liked, List<MovieResponse> disliked) {
     }
 
     /** Returns a quick recommendation based on the user's preferences and the available movies. (No LLM) */
@@ -143,7 +146,19 @@ public class RecommendationService {
         List<Long> liked = profile.map(ProfileSnapshot::liked).orElse(List.of());
         List<Long> disliked = profile.map(ProfileSnapshot::disliked).orElse(List.of());
         List<MovieResponse> movies = movieService.personalized(primary, secondary, liked, disliked, SHORTLIST_SIZE);
-        return new Shortlist(movies, primary, profile);
+        return new Shortlist(movies, primary, profile, tasteExamples(liked, primary), tasteExamples(disliked, primary));
+    }
+
+    /** Loads the given movies, keeping only those in one of the genres (all of them when no genre is set). */
+    private List<MovieResponse> tasteExamples(List<Long> ids, List<String> genres) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        return movieService.byIds(ids).stream()
+                .filter(m -> genres.isEmpty() || m.genres() != null && m.genres().stream()
+                        .anyMatch(g -> genres.stream().anyMatch(g::equalsIgnoreCase)))
+                .limit(TASTE_EXAMPLES)
+                .toList();
     }
 
     /** Returns a fallback recommendation based on the user's preferences and the available movies, without using the LLM. */
@@ -191,37 +206,50 @@ public class RecommendationService {
                 .append("Each entry in \"picks\" must be copied exactly from a candidate's title, without the year. ")
                 .append("Write \"summary\" as one short sentence addressed to the user.\n\n");
 
-        // Include the user's preferences, mood, and notes in the prompt to guide the LLM's recommendations.
-        sb.append("Genres: ").append(shortlist.genres().isEmpty() ? "any" : String.join(", ", shortlist.genres())).append("\n");
+        // Include the user's selected genres and mood to guide the LLM's recommendations.
+        sb.append("Selected genres: ").append(shortlist.genres().isEmpty() ? "any" : String.join(", ", shortlist.genres())).append("\n");
         sb.append("Mood: ").append(request.mood() == null || request.mood().isBlank() ? "not specified" : request.mood()).append("\n");
-        if (request.notes() != null && !request.notes().isBlank()) {
-            sb.append("Notes: ").append(request.notes()).append("\n");
-        }
         shortlist.profile().map(ProfileSnapshot::bio).filter(b -> !b.isBlank())
                 .ifPresent(b -> sb.append("About the user: ").append(b).append("\n"));
 
+        // Movies the user liked or disliked in those genres show the LLM what their taste looks like.
+        if (!shortlist.liked().isEmpty()) {
+            sb.append("\nMOVIES THE USER LIKED:\n");
+            shortlist.liked().forEach(m -> appendMovie(sb, m));
+        }
+        if (!shortlist.disliked().isEmpty()) {
+            sb.append("\nMOVIES THE USER DISLIKED (avoid similar ones):\n");
+            shortlist.disliked().forEach(m -> appendMovie(sb, m));
+        }
+
+        if (request.notes() != null && !request.notes().isBlank()) {
+            sb.append("\nUSER REQUEST: ").append(request.notes().strip()).append("\n");
+        }
+
         // Include the list of candidate movies in the prompt for the LLM to choose from.
         sb.append("\nCANDIDATES:\n");
-        // Each candidate is listed with its title, year, genres, rating, and overview to provide context for the LLM's selection.
-        for (MovieResponse m : shortlist.movies()) {
-            sb.append("- ").append(m.title());
-            if (m.startYear() != null) {
-                sb.append(" (").append(m.startYear()).append(")");
-            }
-            sb.append(" — ").append(m.genres() == null ? "n/a" : String.join(", ", m.genres()));
-            if (m.avgRating() != null) {
-                sb.append("; rating ").append(m.avgRating());
-            }
-            if (m.overview() != null && !m.overview().isBlank()) {
-                String overview = m.overview().strip();
-                sb.append("; ").append(overview.length() > OVERVIEW_MAX_CHARS
-                        ? overview.substring(0, OVERVIEW_MAX_CHARS).stripTrailing() + "..."
-                        : overview);
-            }
-            sb.append("\n");
-        }
+        shortlist.movies().forEach(m -> appendMovie(sb, m));
         // The prompt ends with a request for the LLM to provide its recommendations in JSON format, specifying the picks and summary.
         return sb.toString();
+    }
+
+    /** Appends one movie line with its title, year, genres, rating, and a shortened overview. */
+    private static void appendMovie(StringBuilder sb, MovieResponse m) {
+        sb.append("- ").append(m.title());
+        if (m.startYear() != null) {
+            sb.append(" (").append(m.startYear()).append(")");
+        }
+        sb.append(" — ").append(m.genres() == null ? "n/a" : String.join(", ", m.genres()));
+        if (m.avgRating() != null) {
+            sb.append("; rating ").append(m.avgRating());
+        }
+        if (m.overview() != null && !m.overview().isBlank()) {
+            String overview = m.overview().strip();
+            sb.append("; ").append(overview.length() > OVERVIEW_MAX_CHARS
+                    ? overview.substring(0, OVERVIEW_MAX_CHARS).stripTrailing() + "..."
+                    : overview);
+        }
+        sb.append("\n");
     }
 
     /** Matches a picked movie title to a candidate in the list. */
