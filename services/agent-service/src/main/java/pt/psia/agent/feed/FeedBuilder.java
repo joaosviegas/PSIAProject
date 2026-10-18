@@ -29,10 +29,15 @@ public class FeedBuilder {
     // Small on purpose: the candidates are already ranked by taste, and prompt size is most of the LLM latency on CPU.
     private static final int SHORTLIST_SIZE = 12;
     private static final int PICKS_REQUESTED = 5;
-    private static final int LIKED_TITLES_IN_PROMPT = 5;
+    /** Most recent likes/dislikes shown to the model as taste examples. */
+    private static final int LIKED_IN_PROMPT = 8;
+    private static final int DISLIKED_IN_PROMPT = 5;
+    private static final int OVERVIEW_MAX_CHARS = 150;
     private static final int SIMILAR_PROFILES = 5;
     private static final int SIMILAR_PICKS = 6;
-    private static final Pattern TRAILING_YEAR = Pattern.compile("\\s*\\(\\d{4}\\)$");
+    // Small models usually copy the "(year)" from the candidate list, and sometimes a list number.
+    private static final Pattern TRAILING_YEAR = Pattern.compile("\\s*\\(\\d{4}\\)\\s*$");
+    private static final Pattern LEADING_NUMBER = Pattern.compile("^\\s*\\d+\\s*[.)\\-:]\\s*");
     static final String FALLBACK_SUMMARY =
             "Our AI assistant was busy, so these are the best matches for your taste in the catalog.";
 
@@ -98,15 +103,18 @@ public class FeedBuilder {
         }
         try {
             LlmPicks llmPicks = llmClient.pickMovies(buildPrompt(profile, candidates));
-            List<MovieDto> movies = orEmpty(llmPicks.picks()).stream()
+            List<MovieDto> picked = orEmpty(llmPicks.picks()).stream()
                     .filter(pick -> pick != null && !pick.isBlank())
                     .map(pick -> matchCandidate(pick, candidates))
                     .flatMap(Optional::stream)
                     .distinct()
                     .limit(PICKS_REQUESTED)
                     .toList();
-            if (!movies.isEmpty()) {
-                return new AiPicks(llmPicks.summary(), true, movies);
+            if (!picked.isEmpty()) {
+                String summary = llmPicks.summary() == null || llmPicks.summary().isBlank()
+                        ? defaultSummary(profile) : llmPicks.summary();
+                // Small models often return fewer than requested; top up from the ranked candidates.
+                return new AiPicks(summary, true, fillUp(picked, candidates));
             }
             log.warn("LLM picks for {} matched none of the candidates, falling back: {}", profile.userId(), llmPicks.picks());
         } catch (Exception e) {
@@ -115,51 +123,141 @@ public class FeedBuilder {
         return new AiPicks(FALLBACK_SUMMARY, false, candidates.stream().limit(PICKS_REQUESTED).toList());
     }
 
-    /** Builds the prompt for the LLM based on the user's profile and the candidate movies. */
+    /** Used when the model returns valid picks but forgets the summary. */
+    private static String defaultSummary(ProfileDto profile) {
+        List<String> genres = orEmpty(profile.favoriteGenres());
+        return genres.isEmpty()
+                ? "Picked for your taste."
+                : "Picked for your taste in " + String.join(", ", genres) + ".";
+    }
+
+    /**
+     * Builds the prompt for the LLM. Written for a very small model (1.5B): short numbered-style rules,
+     * and taste examples with year, genres and director so the model can see what the user actually likes.
+     */
     private String buildPrompt(ProfileDto profile, List<MovieDto> candidates) {
         StringBuilder sb = new StringBuilder();
-        sb.append("You are a movie recommendation assistant building a personal feed. Pick the best ")
+        sb.append("You are a movie recommendation assistant. Pick the ")
                 .append(PICKS_REQUESTED)
-                .append(" movies for this user from the CANDIDATE list only ")
-                .append("(never invent a title that isn't in the list). ")
-                .append("Each entry in your \"picks\" list must be copied exactly from a candidate's title. ")
-                .append("Write the \"summary\" as one or two sentences addressed to the user explaining the selection.\n\n");
+                .append(" best movies for this user from the CANDIDATES list.\n")
+                .append("Rules:\n")
+                .append("- Use only titles from CANDIDATES, copied exactly, without the year.\n")
+                .append("- Prefer candidates with themes, tone and genres like the movies the user liked.\n")
+                .append("- Do not pick movies similar to the disliked ones.\n")
+                .append("- Prefer variety: do not pick ").append(PICKS_REQUESTED).append(" near-identical movies.\n")
+                .append("- \"summary\" is one or two sentences addressed to the user (\"you\"), ")
+                .append("mentioning one liked movie that influenced the picks.\n\n");
 
         List<String> genres = orEmpty(profile.favoriteGenres());
         sb.append("User's favourite genres: ").append(genres.isEmpty() ? "any" : String.join(", ", genres)).append("\n");
         if (profile.bio() != null && !profile.bio().isBlank()) {
-            sb.append("User's bio: ").append(profile.bio()).append("\n");
+            sb.append("About the user: ").append(profile.bio().strip()).append("\n");
         }
-        List<Long> liked = orEmpty(profile.favoriteMovieIds()).stream().limit(LIKED_TITLES_IN_PROMPT).toList();
+
+        List<MovieDto> liked = safeByIds(lastN(orEmpty(profile.favoriteMovieIds()), LIKED_IN_PROMPT));
         if (!liked.isEmpty()) {
-            String titles = movieClient.byIds(liked).stream().map(MovieDto::title).collect(Collectors.joining(", "));
-            if (!titles.isBlank()) {
-                sb.append("Movies the user liked: ").append(titles).append("\n");
-            }
+            sb.append("\nMOVIES THE USER LIKED:\n");
+            liked.forEach(m -> appendMovie(sb, m, false));
+        }
+        List<MovieDto> disliked = safeByIds(lastN(orEmpty(profile.dislikedMovieIds()), DISLIKED_IN_PROMPT));
+        if (!disliked.isEmpty()) {
+            sb.append("\nMOVIES THE USER DISLIKED (avoid similar ones):\n");
+            disliked.forEach(m -> appendMovie(sb, m, false));
         }
 
         sb.append("\nCANDIDATES:\n");
-        for (MovieDto m : candidates) {
-            sb.append("- ").append(m.title());
-            if (m.startYear() != null) {
-                sb.append(" (").append(m.startYear()).append(")");
-            }
-            sb.append(" — genres: ").append(m.genres() == null ? "n/a" : String.join(", ", m.genres()));
-            if (m.avgRating() != null) {
-                sb.append(", rating: ").append(m.avgRating());
-            }
-            sb.append("\n");
-        }
+        candidates.forEach(m -> appendMovie(sb, m, true));
         return sb.toString();
     }
 
-    /** Returns the candidate movie that matches the given pick title, or empty if none match. */
+    /** One line per movie: title (year) — genres; rating; director; optional short overview. */
+    private static void appendMovie(StringBuilder sb, MovieDto m, boolean withOverview) {
+        sb.append("- ").append(m.title());
+        if (m.startYear() != null) {
+            sb.append(" (").append(m.startYear()).append(")");
+        }
+        sb.append(" — ").append(m.genres() == null ? "n/a" : String.join(", ", m.genres()));
+        if (m.avgRating() != null) {
+            sb.append("; rating ").append(m.avgRating());
+        }
+        if (m.directors() != null && !m.directors().isBlank()) {
+            sb.append("; director ").append(m.directors());
+        }
+        if (withOverview && m.overview() != null && !m.overview().isBlank()) {
+            String overview = m.overview().strip();
+            sb.append("; ").append(overview.length() > OVERVIEW_MAX_CHARS
+                    ? overview.substring(0, OVERVIEW_MAX_CHARS).stripTrailing() + "..."
+                    : overview);
+        }
+        sb.append("\n");
+    }
+
+    /** A failed lookup of taste examples must not throw away the whole AI build. */
+    private List<MovieDto> safeByIds(List<Long> ids) {
+        if (ids.isEmpty()) {
+            return List.of();
+        }
+        try {
+            return movieClient.byIds(ids);
+        } catch (Exception e) {
+            log.warn("Could not load taste examples, continuing without them: {}", e.getMessage());
+            return List.of();
+        }
+    }
+
+    /** The last {@code n} elements: the most recent likes say more about current taste than the oldest. */
+    private static <T> List<T> lastN(List<T> list, int n) {
+        return list.size() <= n ? list : list.subList(list.size() - n, list.size());
+    }
+
+    /** Adds the best-ranked candidates not already picked until {@code PICKS_REQUESTED} is reached. */
+    private static List<MovieDto> fillUp(List<MovieDto> picked, List<MovieDto> candidates) {
+        Set<MovieDto> result = new LinkedHashSet<>(picked);
+        for (MovieDto m : candidates) {
+            if (result.size() >= PICKS_REQUESTED) {
+                break;
+            }
+            result.add(m);
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * Matches a picked title to a candidate. Tolerates quotes, a copied "(year)", list numbering,
+     * punctuation and case; falls back to a unique partial match for slightly mangled titles.
+     */
     private Optional<MovieDto> matchCandidate(String pickTitle, List<MovieDto> candidates) {
-        // Small models often echo the "(year)" from the candidate list.
-        String normalized = TRAILING_YEAR.matcher(pickTitle.trim()).replaceFirst("").toLowerCase(Locale.ROOT);
-        return candidates.stream()
-                .filter(m -> m.title().toLowerCase(Locale.ROOT).equals(normalized))
+        String wanted = normalize(pickTitle);
+        if (wanted.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<MovieDto> exact = candidates.stream()
+                .filter(m -> normalize(m.title()).equals(wanted))
                 .findFirst();
+        if (exact.isPresent()) {
+            return exact;
+        }
+        if (wanted.length() < 4) {
+            return Optional.empty();
+        }
+        List<MovieDto> loose = candidates.stream()
+                .filter(m -> {
+                    String title = normalize(m.title());
+                    return title.length() >= 4 && (title.contains(wanted) || wanted.contains(title));
+                })
+                .toList();
+        return loose.size() == 1 ? Optional.of(loose.get(0)) : Optional.empty();
+    }
+
+    /** Lower-cases and strips quotes, list numbers, a trailing "(year)" and punctuation. */
+    private static String normalize(String title) {
+        if (title == null) {
+            return "";
+        }
+        String t = title.trim().replaceAll("^[\"'\u201C\u201D]+|[\"'\u201C\u201D]+$", "").trim();
+        t = LEADING_NUMBER.matcher(t).replaceFirst("");
+        t = TRAILING_YEAR.matcher(t).replaceFirst("");
+        return t.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
     }
 
     /** Returns a list of similar picks for the given user ID, excluding the given movie IDs. */

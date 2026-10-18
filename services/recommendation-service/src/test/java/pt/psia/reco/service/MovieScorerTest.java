@@ -87,4 +87,45 @@ class MovieScorerTest {
 
         assertThat(MovieScorer.topGenres(movies, 2)).containsExactly("Crime", "Drama");
     }
+
+    @Test
+    void keywordsAreCleanedStemmedAndStopWordsDropped() {
+        assertThat(MovieScorer.keywords("Something with tanks, nothing too long!")).containsExactly("tank");
+        assertThat(MovieScorer.keywords("I loved Inception, 1945 battles")).containsExactly("inception", "1945", "battle");
+    }
+
+    @Test
+    void keywordsAreEmptyForBlankOrStopWordOnlyNotes() {
+        assertThat(MovieScorer.keywords(null)).isEmpty();
+        assertThat(MovieScorer.keywords("   ")).isEmpty();
+        assertThat(MovieScorer.keywords("something with a movie")).isEmpty();
+    }
+
+    @Test
+    void keywordsContainOnlyLettersAndDigits() {
+        // Safe to join with commas and pass to the ILIKE query.
+        var keywords = MovieScorer.keywords("tanks%, '; DROP_TABLE");
+
+        assertThat(keywords).containsExactly("tank", "drop", "table");
+    }
+
+    @Test
+    void keywordMatchesCountsWordStartsOnly() {
+        assertThat(MovieScorer.keywordMatches("A Sherman tank and its crew", List.of("tank"))).isEqualTo(1);
+        assertThat(MovieScorer.keywordMatches("Tanks roll in", List.of("tank"))).isEqualTo(1);
+        assertThat(MovieScorer.keywordMatches("He stank of fear", List.of("tank"))).isZero();
+    }
+
+    @Test
+    void movieMatchingTheKeywordOutranksAnOtherwiseIdenticalOne() {
+        // Same genre, rating, votes and year: only the overview differs, so the keyword alone decides.
+        Movie plain = movie("First", 2014, "War", "7.5", 300_000);
+        Movie matching = movie("Second", 2014, "War", "7.5", 300_000);
+        ReflectionTestUtils.setField(matching, "overview", "A crew trapped inside a tank.");
+        var taste = taste(List.of("War"), List.of(), List.of(), List.of());
+
+        var ranked = MovieScorer.rank(List.of(plain, matching), taste, List.of("tank"), 2);
+
+        assertThat(ranked).extracting(Movie::getTitle).containsExactly("Second", "First");
+    }
 }

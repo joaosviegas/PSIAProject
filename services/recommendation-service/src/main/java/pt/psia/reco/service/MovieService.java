@@ -54,12 +54,21 @@ public class MovieService {
     }
 
     private static final int POOL_SIZE = 200;
+    /** Extra movies pulled in because their text matches the user's notes. */
+    private static final int KEYWORD_POOL_SIZE = 100;
     private static final int DISCOVER_MIN_VOTES = 5_000;
     private static final double DISCOVER_MIN_RATING = 6.5;
 
-    /** Generates personalized movie recommendations based on the user's taste profile, liked and disliked movies, and specified limits. */
+    /** Generates personalized movie recommendations without free-text keywords. */
     public List<MovieResponse> personalized(Collection<String> primary, Collection<String> secondary,
                                             Collection<Long> liked, Collection<Long> disliked, int limit) {
+        return personalized(primary, secondary, liked, disliked, List.of(), limit);
+    }
+
+    /** Generates personalized movie recommendations based on user preferences, including liked/disliked movies and optional keywords. */
+    public List<MovieResponse> personalized(Collection<String> primary, Collection<String> secondary,
+                                            Collection<Long> liked, Collection<Long> disliked,
+                                            Collection<String> keywords, int limit) {
         Set<Long> seen = new HashSet<>(liked);
         seen.addAll(disliked);
         List<Movie> likedMovies = liked.isEmpty() ? List.of() : movieRepository.findAllById(liked);
@@ -70,8 +79,21 @@ public class MovieService {
         poolGenres.addAll(MovieScorer.topGenres(likedMovies, 2));
 
         MovieScorer.Taste taste = MovieScorer.taste(primary, secondary, likedMovies, dislikedMovies);
-        List<Movie> pool = movieRepository.findPool(String.join(",", poolGenres), csv(seen), POOL_SIZE);
-        return MovieScorer.rank(pool, taste, limit).stream().map(MovieResponse::from).toList();
+        List<Movie> pool = new ArrayList<>(movieRepository.findPool(String.join(",", poolGenres), csv(seen), POOL_SIZE));
+
+        List<String> safeKeywords = keywords.stream()
+                .filter(k -> k != null && k.matches("[\\p{L}\\p{N}]+"))
+                .toList();
+        if (!safeKeywords.isEmpty()) {
+            // An explicit genre choice wins
+            Collection<String> keywordGenres = primary.isEmpty() ? poolGenres : primary;
+            Set<Long> inPool = pool.stream().map(Movie::getId).collect(Collectors.toCollection(HashSet::new));
+            movieRepository.findPoolByKeywords(String.join(",", keywordGenres), csv(seen),
+                            String.join(",", safeKeywords), KEYWORD_POOL_SIZE).stream()
+                    .filter(m -> inPool.add(m.getId()))
+                    .forEach(pool::add);
+        }
+        return MovieScorer.rank(pool, taste, safeKeywords, limit).stream().map(MovieResponse::from).toList();
     }
 
     /** Generates a list of movies for discovery based on specified genres, excluding certain movie IDs, and limiting the result size. */

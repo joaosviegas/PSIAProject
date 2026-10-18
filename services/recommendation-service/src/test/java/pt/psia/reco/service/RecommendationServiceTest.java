@@ -3,6 +3,7 @@ package pt.psia.reco.service;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import pt.psia.reco.web.dto.MovieResponse;
 import pt.psia.reco.web.dto.RecommendationRequest;
 
@@ -16,6 +17,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anySet;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 class RecommendationServiceTest {
@@ -34,9 +36,11 @@ class RecommendationServiceTest {
     void setUp() {
         service = new RecommendationService(movieService, llmClient, profileClient, new SimpleMeterRegistry());
         when(profileClient.fetchProfile(any())).thenReturn(Optional.empty());
-        
+
         lenient().when(movieService.candidates(anyList(), anySet(), anyInt())).thenReturn(List.of(m1, m2));
-        lenient().when(movieService.personalized(anyList(), anyList(), anyList(), anyList(), anyInt())).thenReturn(List.of(m1, m2));
+        // The service always uses the keyword-aware overload (keywords may be empty).
+        lenient().when(movieService.personalized(anyList(), anyList(), anyList(), anyList(), anyList(), anyInt()))
+                .thenReturn(List.of(m1, m2));
         lenient().when(movieService.discover(anyList(), anySet(), anyInt())).thenReturn(List.of(m1, m2));
     }
 
@@ -59,7 +63,19 @@ class RecommendationServiceTest {
 
         assertThat(resp.aiGenerated()).isTrue();
         assertThat(resp.summary()).isEqualTo("Mind-bending picks!");
-        assertThat(resp.movies()).extracting("title").containsExactly("Inception");
+        // The LLM's pick comes first; the rest of the shortlist tops the list up.
+        assertThat(resp.movies()).extracting("title").containsExactly("Inception", "Interstellar");
+    }
+
+    @Test
+    void llmPicksAreMatchedLeniently() {
+        when(llmClient.pickMovies(anyString()))
+                .thenReturn(new LlmPicks("Space!", List.of("2. \"interstellar\" (2014)")));
+
+        var resp = service.recommend(new RecommendationRequest(List.of("Sci-Fi"), null, null), "Bearer token");
+
+        assertThat(resp.aiGenerated()).isTrue();
+        assertThat(resp.movies()).extracting("title").containsExactly("Interstellar", "Inception");
     }
 
     @Test
@@ -71,5 +87,33 @@ class RecommendationServiceTest {
 
         assertThat(resp.aiGenerated()).isFalse();
         assertThat(resp.movies()).extracting("title").contains("Inception", "Interstellar");
+    }
+
+    @Test
+    void recommendFallsBackWhenNoPickMatchesACandidate() {
+        when(llmClient.pickMovies(anyString())).thenReturn(new LlmPicks("Hmm", List.of("Not in the list")));
+
+        var resp = service.recommend(new RecommendationRequest(List.of("Sci-Fi"), null, null), "Bearer token");
+
+        assertThat(resp.aiGenerated()).isFalse();
+        assertThat(resp.movies()).extracting("title").containsExactly("Inception", "Interstellar");
+    }
+
+    @Test
+    void notesBecomeKeywordsForTheShortlist() {
+        service.quick(new RecommendationRequest(List.of("War"), null, "something with tanks"), "Bearer token");
+
+        verify(movieService).personalized(anyList(), anyList(), anyList(), anyList(), eq(List.of("tank")), anyInt());
+    }
+
+    @Test
+    void promptIncludesTheUsersNotesAndTheCandidates() {
+        when(llmClient.pickMovies(anyString())).thenReturn(new LlmPicks("Space!", List.of("Inception")));
+
+        service.recommend(new RecommendationRequest(List.of("Sci-Fi"), null, "tanks"), "Bearer token");
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(llmClient).pickMovies(prompt.capture());
+        assertThat(prompt.getValue()).contains("tanks", "Inception", "Interstellar");
     }
 }

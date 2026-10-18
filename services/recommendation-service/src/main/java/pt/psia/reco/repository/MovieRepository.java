@@ -71,6 +71,27 @@ public interface MovieRepository extends JpaRepository<Movie, Long> {
                          @Param("excludeCsv") String excludeCsv,
                          @Param("limit") int limit);
 
+    /** Returns a pool of movies matching the given genres and keywords, excluding the specified movie IDs, ordered by a weighted score based on rating and votes. */
+    @Query(value = """
+            SELECT * FROM movies m
+            WHERE (:genresCsv = '' OR string_to_array(m.genres, ';') && string_to_array(:genresCsv, ','))
+              AND m.id <> ALL (CAST(string_to_array(:excludeCsv, ',') AS bigint[]))
+              AND EXISTS (
+                  SELECT 1 FROM unnest(string_to_array(:keywordsCsv, ',')) AS k
+                  WHERE m.overview ILIKE CONCAT('%', k, '%')
+                     OR m.title ILIKE CONCAT('%', k, '%')
+                     OR m.directors ILIKE CONCAT('%', k, '%')
+                     OR m.stars ILIKE CONCAT('%', k, '%')
+              )
+            ORDER BY (CAST(COALESCE(m.num_votes, 0) AS float8) / (COALESCE(m.num_votes, 0) + 2500)) * COALESCE(m.avg_rating, 0)
+                   + (CAST(2500 AS float8) / (COALESCE(m.num_votes, 0) + 2500)) * 6.5 DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Movie> findPoolByKeywords(@Param("genresCsv") String genresCsv,
+                                   @Param("excludeCsv") String excludeCsv,
+                                   @Param("keywordsCsv") String keywordsCsv,
+                                   @Param("limit") int limit);
+
     /** Random movies from the chosen genres only - the "discover" half of the feed. */
     @Query(value = """
             SELECT * FROM movies m
