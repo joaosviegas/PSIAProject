@@ -17,11 +17,26 @@ public final class MovieScorer {
     static final double DISLIKED_STEP = -0.5;
     static final double DISLIKED_FLOOR = -2.0;
 
+    /** Score added per request keyword found in a movie's title, overview, directors or stars. */
+    static final double KEYWORD_WEIGHT = 1.5;
+    /** At most this many keyword hits count, so one very long note can't drown out taste. */
+    static final int KEYWORD_CAP = 3;
+    private static final int MAX_KEYWORDS = 6;
+
     private static final double PRIOR_VOTES = 2500;
     private static final double PRIOR_MEAN = 6.5;
     private static final Pattern NAME_SPLIT = Pattern.compile("\\s*[|,;]\\s*");
+    private static final Pattern TOKEN_SPLIT = Pattern.compile("[^\\p{L}\\p{N}]+");
+    private static final Set<String> STOP_WORDS = Set.copyOf(List.of(
+            "the", "and", "for", "with", "that", "this", "these", "those", "something", "nothing", "anything",
+            "movie", "movies", "film", "films", "like", "liked", "love", "loved", "want", "wanted", "some",
+            "about", "not", "too", "very", "really", "just", "have", "from", "are", "was", "were", "but", "any",
+            "can", "you", "more", "less", "long", "short", "watch", "good", "best", "great", "one", "has", "had",
+            "who", "what", "when", "where", "into", "than", "then", "them", "they", "her", "his", "she", "him",
+            "its", "our", "your", "would", "could", "should", "maybe", "please", "need", "also", "make", "feel",
+            "mood", "else", "only", "much", "many", "over", "under", "know", "see", "seen"));
 
-    /** 
+    /**
      * Represents a user's taste profile, including genre weights, preferred directors and stars, and median year of liked movies.
      * @param genreWeights A map of genres to their corresponding weights based on user preferences.
      * @param directors A set of preferred directors based on liked movies.
@@ -29,6 +44,10 @@ public final class MovieScorer {
      * @param medianYear The median year of the user's liked movies, used for era-based scoring.
      */
     public record Taste(Map<String, Double> genreWeights, Set<String> directors, Set<String> stars, Integer medianYear) {
+    }
+
+    /** A movie with its final score, so each movie is scored only once per ranking. */
+    private record Scored(Movie movie, double score) {
     }
 
     /** Constructs a Taste profile based on the user's primary and secondary genre preferences, liked movies, and disliked movies. */
@@ -67,11 +86,22 @@ public final class MovieScorer {
 
     /** Ranks the given pool of movies based on the user's taste profile, returning the top {@code limit} movies. */
     public static List<Movie> rank(Collection<Movie> pool, Taste taste, int limit) {
+        return rank(pool, taste, List.of(), limit);
+    }
+
+    /**
+     * Ranks the pool by taste, plus a boost for every request keyword (from the user's notes) that
+     * appears in the movie's title, overview, directors or stars.
+     */
+    public static List<Movie> rank(Collection<Movie> pool, Taste taste, Collection<String> keywords, int limit) {
+        List<Pattern> patterns = patterns(keywords);
         return pool.stream()
+                .map(m -> new Scored(m, score(m, taste) + keywordBoost(m, patterns)))
                 .sorted(Comparator
-                        .comparingDouble((Movie m) -> -score(m, taste))
-                        .thenComparing(m -> -(m.getNumVotes() == null ? 0 : m.getNumVotes())))
+                        .comparingDouble((Scored s) -> -s.score())
+                        .thenComparingInt(s -> -(s.movie().getNumVotes() == null ? 0 : s.movie().getNumVotes())))
                 .limit(limit)
+                .map(Scored::movie)
                 .toList();
     }
 
@@ -84,6 +114,41 @@ public final class MovieScorer {
                 .limit(n)
                 .map(Map.Entry::getKey)
                 .toList();
+    }
+
+    /**
+     * Extracts the meaningful search words from the user's free-text notes: lower-cased, letters and digits only,
+     * stop words removed, plurals folded. Safe to pass to SQL as a comma-separated list.
+     */
+    public static List<String> keywords(String notes) {
+        if (notes == null || notes.isBlank()) {
+            return List.of();
+        }
+        Set<String> out = new LinkedHashSet<>();
+        for (String token : TOKEN_SPLIT.split(notes.toLowerCase(Locale.ROOT))) {
+            String word = stem(token);
+            if (word.length() >= 3 && !STOP_WORDS.contains(token) && !STOP_WORDS.contains(word)) {
+                out.add(word);
+            }
+            if (out.size() == MAX_KEYWORDS) {
+                break;
+            }
+        }
+        return List.copyOf(out);
+    }
+
+    /** How many of the given keywords occur (at the start of a word) in the text. */
+    public static int keywordMatches(String text, Collection<String> keywords) {
+        if (text == null || text.isBlank() || keywords.isEmpty()) {
+            return 0;
+        }
+        int hits = 0;
+        for (Pattern p : patterns(keywords)) {
+            if (p.matcher(text).find()) {
+                hits++;
+            }
+        }
+        return hits;
     }
 
     /** Computes a score for a movie based on the user's taste profile, considering genre affinity, quality, popularity, people involved, and era. */
@@ -125,6 +190,44 @@ public final class MovieScorer {
         double votes = m.getNumVotes() == null ? 0 : m.getNumVotes();
         double rating = m.getAvgRating() == null ? PRIOR_MEAN : m.getAvgRating().doubleValue();
         return (votes / (votes + PRIOR_VOTES)) * rating + (PRIOR_VOTES / (votes + PRIOR_VOTES)) * PRIOR_MEAN;
+    }
+
+    /** Boost for movies whose text mentions the request keywords. */
+    static double keywordBoost(Movie m, List<Pattern> patterns) {
+        if (patterns.isEmpty()) {
+            return 0;
+        }
+        String text = String.join(" ",
+                m.getTitle() == null ? "" : m.getTitle(),
+                m.getOverview() == null ? "" : m.getOverview(),
+                m.getDirectors() == null ? "" : m.getDirectors(),
+                m.getStars() == null ? "" : m.getStars());
+        int hits = 0;
+        for (Pattern p : patterns) {
+            if (p.matcher(text).find()) {
+                hits++;
+            }
+        }
+        return KEYWORD_WEIGHT * Math.min(hits, KEYWORD_CAP);
+    }
+
+    /** Returns a list of compiled regex patterns for the given keywords, matching whole words case-insensitively. */
+    private static List<Pattern> patterns(Collection<String> keywords) {
+        return keywords.stream()
+                .map(k -> Pattern.compile("(?<![\\p{L}\\p{N}])" + Pattern.quote(k),
+                        Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE))
+                .toList();
+    }
+
+    /** Folds the most common English plurals. */
+    private static String stem(String word) {
+        if (word.length() > 4 && word.endsWith("ies")) {
+            return word.substring(0, word.length() - 3) + "y";
+        }
+        if (word.length() > 3 && word.endsWith("s") && !word.endsWith("ss")) {
+            return word.substring(0, word.length() - 1);
+        }
+        return word;
     }
 
     /** Extracts a set of normalized names from a raw string, splitting by common delimiters and converting to lowercase. */

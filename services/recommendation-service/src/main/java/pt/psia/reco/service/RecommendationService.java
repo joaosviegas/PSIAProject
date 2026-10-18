@@ -13,9 +13,11 @@ import pt.psia.reco.web.dto.RecommendationResponse;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 /**
@@ -35,6 +37,8 @@ public class RecommendationService {
     private static final int TASTE_EXAMPLES = 5;
     // The candidate list shows "Title (Year)", and small models usually copy the year too.
     private static final Pattern TRAILING_YEAR = Pattern.compile("\\s*\\(\\d{4}\\)\\s*$");
+    private static final Pattern LEADING_NUMBER = Pattern.compile("^\\s*\\d+\\s*[.)\\-:]\\s*");
+    private static final String MATCH_TAG = " [matches request]";
 
     private final MovieService movieService;
     private final LlmClient llmClient;
@@ -47,7 +51,7 @@ public class RecommendationService {
 
     /**
      * Constructs a new RecommendationService with the given dependencies and registers counters for metrics.
-     * 
+     *
      * @param movieService the MovieService for fetching movie data
      * @param llmClient the LlmClient for interacting with the large language model
      * @param profileClient the ProfileClient for fetching user profile information
@@ -64,9 +68,9 @@ public class RecommendationService {
         this.cachedCounter = Counter.builder("recommendations_total").tag("mode", "cached").register(registry);
     }
 
-    /** A shortlist of movies, genres, and a user's profile. */
+    /** A shortlist of movies, genres, and a user's profile. {@code keywords} are the search words from the user's notes. */
     private record Shortlist(List<MovieResponse> movies, List<String> genres, Optional<ProfileSnapshot> profile,
-                             List<MovieResponse> liked, List<MovieResponse> disliked) {
+                             List<MovieResponse> liked, List<MovieResponse> disliked, List<String> keywords) {
     }
 
     /** Returns a quick recommendation based on the user's preferences and the available movies. (No LLM) */
@@ -99,7 +103,7 @@ public class RecommendationService {
         try {
             LlmPicks llmPicks = llmClient.pickMovies(buildPrompt(request, shortlist));
             List<String> picks = llmPicks == null || llmPicks.picks() == null ? List.of() : llmPicks.picks();
-            List<MovieResponse> movies = picks.stream()
+            List<MovieResponse> picked = picks.stream()
                     .filter(p -> p != null && !p.isBlank())
                     .map(pick -> matchCandidate(pick, shortlist.movies()))
                     .flatMap(Optional::stream)
@@ -107,7 +111,9 @@ public class RecommendationService {
                     .limit(PICKS_REQUESTED)
                     .toList();
 
-            if (!movies.isEmpty()) {
+            if (!picked.isEmpty()) {
+                // Small models often return fewer than requested; top up from the ranked shortlist.
+                List<MovieResponse> movies = fillUp(picked, shortlist.movies());
                 String summary = llmPicks.summary() == null || llmPicks.summary().isBlank()
                         ? describe(request, shortlist) : llmPicks.summary();
                 RecommendationResponse response = new RecommendationResponse(summary, movies, true);
@@ -128,7 +134,7 @@ public class RecommendationService {
                 fallback.movies(), false);
     }
 
-    /** Constructs a Shortlist of movies based on the user's preferences, mood, and profile. */
+    /** Constructs a Shortlist of movies based on the user's preferences, mood, notes, and profile. */
     private Shortlist shortlist(RecommendationRequest request, String bearerToken) {
         // Fetch the user's profile information using the provided bearer token.
         Optional<ProfileSnapshot> profile = profileClient.fetchProfile(bearerToken);
@@ -145,8 +151,12 @@ public class RecommendationService {
         // Fetch the user's liked and disliked movies from their profile, if available.
         List<Long> liked = profile.map(ProfileSnapshot::liked).orElse(List.of());
         List<Long> disliked = profile.map(ProfileSnapshot::disliked).orElse(List.of());
-        List<MovieResponse> movies = movieService.personalized(primary, secondary, liked, disliked, SHORTLIST_SIZE);
-        return new Shortlist(movies, primary, profile, tasteExamples(liked, primary), tasteExamples(disliked, primary));
+
+        // The notes steer *which movies are considered*, not just what the LLM is told: without this,
+        List<String> keywords = MovieScorer.keywords(request.notes());
+        List<MovieResponse> movies = movieService.personalized(primary, secondary, liked, disliked, keywords, SHORTLIST_SIZE);
+        return new Shortlist(movies, primary, profile, tasteExamples(liked, primary), tasteExamples(disliked, primary),
+                keywords);
     }
 
     /** Loads the given movies, keeping only those in one of the genres (all of them when no genre is set). */
@@ -177,6 +187,7 @@ public class RecommendationService {
         if (request.mood() != null && !request.mood().isBlank()) {
             parts.add(request.mood().trim().toLowerCase(Locale.ROOT));
         }
+        parts.addAll(shortlist.keywords());
         return parts.isEmpty()
                 ? "Top-rated picks tuned to your taste."
                 : "Best matches for " + String.join(", ", parts) + ", tuned to your taste.";
@@ -196,17 +207,27 @@ public class RecommendationService {
                 request.notes() == null ? "" : request.notes().trim().toLowerCase(Locale.ROOT));
     }
 
-    /** Builds a prompt for the LLM based on the user's request and the shortlist of movies. */
+    /**
+     * Builds a prompt for the LLM. It is written for a very small model: short rules, the user's
+     * request stated explicitly, and candidates that match the request flagged so the model doesn't have
+     * to work that out from the overviews.
+     */
     private String buildPrompt(RecommendationRequest request, Shortlist shortlist) {
         StringBuilder sb = new StringBuilder();
-        // The prompt instructs the LLM to select the best-fitting movies from the provided candidates, based on the user's preferences and profile.
-        sb.append("You are a movie recommendation assistant. From the CANDIDATES list only, pick the ")
+        sb.append("You are a movie recommendation assistant. Pick the ")
                 .append(PICKS_REQUESTED)
-                .append(" that best fit this user (never invent a title). ")
-                .append("Each entry in \"picks\" must be copied exactly from a candidate's title, without the year. ")
-                .append("Write \"summary\" as one short sentence addressed to the user.\n\n");
+                .append(" best movies for this user from the CANDIDATES list.\n")
+                .append("Rules:\n")
+                .append("- Use only titles from CANDIDATES, copied exactly, without the year.\n")
+                .append("- The USER REQUEST matters most: prefer candidates marked [matches request].\n")
+                .append("- Then fit the selected genres, the mood, and the taste shown by the liked movies.\n")
+                .append("- Do not pick movies similar to the disliked ones.\n")
+                .append("- \"summary\" is one short sentence addressed to the user.\n\n");
 
-        // Include the user's selected genres and mood to guide the LLM's recommendations.
+        // The user's own words come first so they are not lost behind the long candidate list.
+        if (request.notes() != null && !request.notes().isBlank()) {
+            sb.append("USER REQUEST: ").append(request.notes().strip()).append("\n");
+        }
         sb.append("Selected genres: ").append(shortlist.genres().isEmpty() ? "any" : String.join(", ", shortlist.genres())).append("\n");
         sb.append("Mood: ").append(request.mood() == null || request.mood().isBlank() ? "not specified" : request.mood()).append("\n");
         shortlist.profile().map(ProfileSnapshot::bio).filter(b -> !b.isBlank())
@@ -215,29 +236,27 @@ public class RecommendationService {
         // Movies the user liked or disliked in those genres show the LLM what their taste looks like.
         if (!shortlist.liked().isEmpty()) {
             sb.append("\nMOVIES THE USER LIKED:\n");
-            shortlist.liked().forEach(m -> appendMovie(sb, m));
+            shortlist.liked().forEach(m -> appendMovie(sb, m, List.of()));
         }
         if (!shortlist.disliked().isEmpty()) {
             sb.append("\nMOVIES THE USER DISLIKED (avoid similar ones):\n");
-            shortlist.disliked().forEach(m -> appendMovie(sb, m));
+            shortlist.disliked().forEach(m -> appendMovie(sb, m, List.of()));
         }
 
-        if (request.notes() != null && !request.notes().isBlank()) {
-            sb.append("\nUSER REQUEST: ").append(request.notes().strip()).append("\n");
-        }
-
-        // Include the list of candidate movies in the prompt for the LLM to choose from.
         sb.append("\nCANDIDATES:\n");
-        shortlist.movies().forEach(m -> appendMovie(sb, m));
-        // The prompt ends with a request for the LLM to provide its recommendations in JSON format, specifying the picks and summary.
+        shortlist.movies().forEach(m -> appendMovie(sb, m, shortlist.keywords()));
         return sb.toString();
     }
 
     /** Appends one movie line with its title, year, genres, rating, and a shortened overview. */
-    private static void appendMovie(StringBuilder sb, MovieResponse m) {
+    private static void appendMovie(StringBuilder sb, MovieResponse m, List<String> keywords) {
         sb.append("- ").append(m.title());
         if (m.startYear() != null) {
             sb.append(" (").append(m.startYear()).append(")");
+        }
+        // Right after the title, where a small model is most likely to notice it.
+        if (!keywords.isEmpty() && MovieScorer.keywordMatches(m.title() + " " + m.overview(), keywords) > 0) {
+            sb.append(MATCH_TAG);
         }
         sb.append(" — ").append(m.genres() == null ? "n/a" : String.join(", ", m.genres()));
         if (m.avgRating() != null) {
@@ -252,12 +271,53 @@ public class RecommendationService {
         sb.append("\n");
     }
 
-    /** Matches a picked movie title to a candidate in the list. */
+    /** Adds the best-ranked shortlist movies not already picked until {@code PICKS_REQUESTED} is reached. */
+    private static List<MovieResponse> fillUp(List<MovieResponse> picked, List<MovieResponse> shortlist) {
+        Set<MovieResponse> result = new LinkedHashSet<>(picked);
+        for (MovieResponse m : shortlist) {
+            if (result.size() >= PICKS_REQUESTED) {
+                break;
+            }
+            result.add(m);
+        }
+        return List.copyOf(result);
+    }
+
+    /**
+     * Matches a picked title to a candidate. Tolerates quotes, a copied "(year)", list numbering,
+     * punctuation and case; falls back to a unique partial match for slightly mangled titles.
+     */
     private Optional<MovieResponse> matchCandidate(String pickTitle, List<MovieResponse> candidates) {
-        String unquoted = pickTitle.trim().replaceAll("^[\"']+|[\"']+$", "").trim();
-        String normalized = TRAILING_YEAR.matcher(unquoted).replaceFirst("").trim().toLowerCase(Locale.ROOT);
-        return candidates.stream()
-                .filter(m -> m.title().toLowerCase(Locale.ROOT).equals(normalized))
+        String wanted = normalize(pickTitle);
+        if (wanted.isEmpty()) {
+            return Optional.empty();
+        }
+        Optional<MovieResponse> exact = candidates.stream()
+                .filter(m -> normalize(m.title()).equals(wanted))
                 .findFirst();
+        if (exact.isPresent()) {
+            return exact;
+        }
+        if (wanted.length() < 4) {
+            return Optional.empty();
+        }
+        List<MovieResponse> loose = candidates.stream()
+                .filter(m -> {
+                    String title = normalize(m.title());
+                    return title.length() >= 4 && (title.contains(wanted) || wanted.contains(title));
+                })
+                .toList();
+        return loose.size() == 1 ? Optional.of(loose.get(0)) : Optional.empty();
+    }
+
+    /** Lower-cases and strips quotes, list numbers, a trailing "(year)" and punctuation. */
+    private static String normalize(String title) {
+        if (title == null) {
+            return "";
+        }
+        String t = title.trim().replaceAll("^[\"'\u201C\u201D]+|[\"'\u201C\u201D]+$", "").trim();
+        t = LEADING_NUMBER.matcher(t).replaceFirst("");
+        t = TRAILING_YEAR.matcher(t).replaceFirst("");
+        return t.toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}]+", " ").trim();
     }
 }

@@ -3,6 +3,7 @@ package pt.psia.agent.feed;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import pt.psia.agent.client.MovieClient;
 import pt.psia.agent.client.ProfileClient;
 import pt.psia.agent.client.dto.MovieDto;
@@ -12,7 +13,6 @@ import pt.psia.agent.llm.LlmPicks;
 
 import java.util.Collection;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -21,6 +21,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -36,6 +37,7 @@ class FeedBuilderTest {
     ProfileDto me = new ProfileDto(USER, "me", "Me", "likes space", List.of("Sci-Fi"), List.of(1L), List.of(2L), "2026-10-05T10:00:00Z");
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         when(movieClient.personalized(eq(List.of("Sci-Fi")), eq(List.of(1L)), eq(List.of(2L)), anyInt()))
                 .thenReturn(List.of(movie(10, "Arrival"), movie(11, "Alien"), movie(12, "Contact")));
@@ -52,7 +54,27 @@ class FeedBuilderTest {
 
         assertThat(feed.aiGenerated()).isTrue();
         assertThat(feed.summary()).isEqualTo("Space!");
-        assertThat(feed.picks()).extracting(MovieDto::title).containsExactly("Alien", "Arrival");
+        // The LLM's picks come first, in its order; the remaining candidate tops the list up.
+        assertThat(feed.picks()).extracting(MovieDto::title).containsExactly("Alien", "Arrival", "Contact");
+    }
+
+    @Test
+    void toleratesNumberingQuotesAndPunctuationInPicks() {
+        when(llmClient.pickMovies(anyString())).thenReturn(new LlmPicks("Space!", List.of("1. \"Alien\" (1979)")));
+
+        Feed feed = builder.build(me);
+
+        assertThat(feed.picks()).extracting(MovieDto::title).containsExactly("Alien", "Arrival", "Contact");
+    }
+
+    @Test
+    void missingSummaryGetsADefault() {
+        when(llmClient.pickMovies(anyString())).thenReturn(new LlmPicks(null, List.of("Arrival")));
+
+        Feed feed = builder.build(me);
+
+        assertThat(feed.aiGenerated()).isTrue();
+        assertThat(feed.summary()).isNotBlank();
     }
 
     @Test
@@ -63,6 +85,16 @@ class FeedBuilderTest {
 
         assertThat(feed.aiGenerated()).isFalse();
         assertThat(feed.summary()).isEqualTo(FeedBuilder.FALLBACK_SUMMARY);
+        assertThat(feed.picks()).extracting(MovieDto::id).containsExactly(10L, 11L, 12L);
+    }
+
+    @Test
+    void fallsBackWhenNoPickMatchesACandidate() {
+        when(llmClient.pickMovies(anyString())).thenReturn(new LlmPicks("Hmm", List.of("Not in the list")));
+
+        Feed feed = builder.build(me);
+
+        assertThat(feed.aiGenerated()).isFalse();
         assertThat(feed.picks()).extracting(MovieDto::id).containsExactly(10L, 11L, 12L);
     }
 
@@ -95,7 +127,7 @@ class FeedBuilderTest {
 
         Feed feed = builder.build(me);
 
-        assertThat(feed.picks()).extracting(MovieDto::title).containsExactly("Arrival");
+        assertThat(feed.picks()).extracting(MovieDto::title).containsExactly("Arrival", "Alien", "Contact");
         assertThat(feed.fromSimilarUsers()).isEmpty();
     }
 
@@ -108,6 +140,29 @@ class FeedBuilderTest {
         assertThat(feed.aiGenerated()).isFalse();
         assertThat(feed.picks()).isEmpty();
         verifyNoInteractions(llmClient);
+    }
+
+    @Test
+    void promptIncludesTasteExamplesAndCandidates() {
+        when(llmClient.pickMovies(anyString())).thenReturn(new LlmPicks("Space!", List.of("Arrival")));
+
+        builder.build(me);
+
+        ArgumentCaptor<String> prompt = ArgumentCaptor.forClass(String.class);
+        verify(llmClient).pickMovies(prompt.capture());
+        // "Movie 1" is the liked example, "Movie 2" the disliked one (both built by the byIds stub).
+        assertThat(prompt.getValue()).contains("Movie 1", "Movie 2", "Arrival", "Alien", "Contact");
+    }
+
+    @Test
+    void failedTasteExampleLookupDoesNotDropTheAiBuild() {
+        when(movieClient.byIds(List.of(1L))).thenThrow(new RuntimeException("recommendation-service down"));
+        when(llmClient.pickMovies(anyString())).thenReturn(new LlmPicks("Space!", List.of("Arrival")));
+
+        Feed feed = builder.build(me);
+
+        assertThat(feed.aiGenerated()).isTrue();
+        assertThat(feed.picks()).extracting(MovieDto::title).containsExactly("Arrival", "Alien", "Contact");
     }
 
     private static MovieDto movie(long id, String title) {
