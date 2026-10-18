@@ -29,6 +29,8 @@ public class RecommendationService {
     /** How many candidates the LLM sees. Small on purpose: prompt size is most of the latency on CPU. */
     private static final int SHORTLIST_SIZE = 12;
     private static final int PICKS_REQUESTED = 5;
+    /** Overviews are cut to this length so they add context without blowing up the prompt. */
+    private static final int OVERVIEW_MAX_CHARS = 150;
     // The candidate list shows "Title (Year)", and small models usually copy the year too.
     private static final Pattern TRAILING_YEAR = Pattern.compile("\\s*\\(\\d{4}\\)\\s*$");
 
@@ -200,7 +202,7 @@ public class RecommendationService {
 
         // Include the list of candidate movies in the prompt for the LLM to choose from.
         sb.append("\nCANDIDATES:\n");
-        // Each candidate is listed with its title, year, genres, and rating to provide context for the LLM's selection.
+        // Each candidate is listed with its title, year, genres, rating, and overview to provide context for the LLM's selection.
         for (MovieResponse m : shortlist.movies()) {
             sb.append("- ").append(m.title());
             if (m.startYear() != null) {
@@ -209,6 +211,12 @@ public class RecommendationService {
             sb.append(" — ").append(m.genres() == null ? "n/a" : String.join(", ", m.genres()));
             if (m.avgRating() != null) {
                 sb.append("; rating ").append(m.avgRating());
+            }
+            if (m.overview() != null && !m.overview().isBlank()) {
+                String overview = m.overview().strip();
+                sb.append("; ").append(overview.length() > OVERVIEW_MAX_CHARS
+                        ? overview.substring(0, OVERVIEW_MAX_CHARS).stripTrailing() + "..."
+                        : overview);
             }
             sb.append("\n");
         }
