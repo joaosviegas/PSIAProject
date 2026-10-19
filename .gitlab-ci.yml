@@ -1,7 +1,7 @@
 stages:
   - test
-  - build
   - e2e
+  - build
   - deploy
 
 variables:
@@ -65,7 +65,7 @@ test:agent-service:
     reports:
       junit: services/agent-service/target/surefire-reports/TEST-*.xml
 
-# ── Stage 2: build + push all Docker images ───────────────────────────────
+# ── Stage 3: build + push all Docker images ───────────────────────────────
 
 .build-image: &build-image
   stage: build
@@ -115,7 +115,7 @@ build:gateway:
     - docker tag $DOCKER_HUB_USER/g37-gateway:$CI_COMMIT_SHORT_SHA $DOCKER_HUB_USER/g37-gateway:latest
     - docker push $DOCKER_HUB_USER/g37-gateway:latest
 
-# ── Stage 3: Playwright E2E tests ─────────────────────────────────────────
+# ── Stage 2: Playwright E2E tests ─────────────────────────────────────────
 
 e2e_tests:
   stage: e2e

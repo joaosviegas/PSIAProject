@@ -340,14 +340,14 @@ Every push runs a GitLab CI pipeline (`.gitlab-ci.yml`) on a self-hosted runner 
 tests and packages the application, and on `master` it also deploys it to the Kubernetes cluster.
 
 ```
-test ──► build ──► e2e ──► deploy (master only)
+test ──► e2e ──► build ──► deploy (master only)
 ```
 
 | Stage | Jobs | What it does |
 |---|---|---|
 | `test` | `test:<service>` × 4 | `mvn test` for each Spring service, in parallel. JUnit reports show up in the GitLab MR/pipeline UI |
-| `build` | `build:<service>` × 5 | Builds the 4 service images + the gateway and pushes `<DOCKER_HUB_USER>/g37-<svc>:<commit-sha>` and `:latest` to Docker Hub |
 | `e2e` | `e2e_tests` | Starts the full stack with `docker compose` (without the LLM model, so the AI paths use their fallback) and runs the Playwright suite in `frontend/tests/e2e/`. The HTML report, traces and videos are kept as job artifacts for 7 days |
+| `build` | `build:<service>` × 5 | Builds the 4 service images + the gateway and pushes `<DOCKER_HUB_USER>/g37-<svc>:<commit-sha>` and `:latest` to Docker Hub, so only images that passed e2e are published |
 | `deploy` | `deploy:k8s` | SSHes into the cluster master and runs `kubectl set image` to roll every service to the image built from this commit, then waits for `kubectl rollout status` |
 
 The deploy updates images only. Manifest changes (new env vars, new services, secrets) are still
@@ -415,7 +415,7 @@ Uses the private key (`id_rsa`).
 
 ### 4. Verifying a deploy
 
-1. Push a commit to `master` and watch `test → build → e2e → deploy` finish in **Build → Pipelines**.
+1. Push a commit to `master` and watch `test → e2e → build → deploy` finish in **Build → Pipelines**.
 2. On the master: `sudo kubectl get deploy -o wide` shows images tagged with the pipeline's short commit SHA.
 3. Open `http://<any-worker-ip>:30080`.
 
