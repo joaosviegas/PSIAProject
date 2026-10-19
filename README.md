@@ -1,15 +1,15 @@
-# PSIA — AI Movie Recommendation Hub (group 37)
+# PSIA - AI Movie Recommendation Hub (group 37)
 
 Microservices app for the Platforms for AI Systems project: register, build a movie profile, browse other users,
 ask an LLM for recommendations, and get a feed pre-computed by a background agent.
 
+![Web UI](hero-section.png)
 
 ## Prerequisites
 
 - **Docker** (Desktop on macOS/Windows with >= 8 GB memory; on Windows use WSL2)
 - **[just](https://github.com/casey/just)** — command runner (like make but simpler)
-- **git**, **curl**, **jq** — used by `scripts/smoke.sh`
-- **Node.js 22** — only needed for `npm run dev` (hot-reload frontend dev); production builds happen in Docker
+- **git**, **curl** (used by `scripts/smoke.sh`)
 
 A JDK is **not** required. Maven builds run inside Docker containers.
 
@@ -36,46 +36,21 @@ The movie catalog (~7k enriched movies with posters, overviews, directors and
 cast) is bundled in the Docker image and loaded into Postgres automatically on
 first startup. No external downloads or scripts needed.
 
-## Day-to-day commands
+## Commands
 
 | Command | What it does |
 |---|---|
 | `just start` | Build images, start all containers |
 | `just stop` | Stop containers (data volumes kept) |
 | `just ps` | Container status and health |
-| `just restart <service>` | Rebuild and restart one service, e.g. `just restart auth-service` |
 | `just logs <service>` | Follow logs (omit service for all) |
 | `just smoke` | End-to-end test through the gateway |
-| `just test <service>` | Run Maven tests in Docker, e.g. `just test auth-service` |
-| `just test-e2e` | Run Playwright E2E tests against the local Docker stack |
-| `just test-e2e-ui` | Run Playwright E2E tests in UI mode for debugging |
-| `just monitoring` | (Re)start only Prometheus, Grafana and the exporters |
-| `just psql auth` | Open psql on a service's database |
-| `just redis` | Open redis-cli |
 | `just clean` | Stop and delete Postgres + Redis data (keeps the LLM model) |
 | `just nuke` | Stop and delete EVERYTHING including the LLM model |
 
-## Movie dataset
-
-The catalog (7,288 movies with posters, overviews, directors and cast) is a
-pre-built enriched CSV,
-`services/recommendation-service/src/main/resources/data/movies.csv`, bundled
-into recommendation-service's Docker image at build time. `MovieDataLoader`
-bulk-inserts it into the `movies` table on first startup (no-op if the table
-already has rows).
-
-To refresh the catalog: `just psql movies` → `TRUNCATE movies;`, then
-`just restart recommendation-service`.
-
-## Frontend development
-
-```bash
-cd frontend && npm run dev    # Vite dev server with hot reload, proxies /api to localhost:8080
-```
-
-Requires the backend to be running (`just start`).
-
 ## Services
+
+![Architecture](diagram-full.png)
 
 | Service | Path via gateway | Store |
 |---|---|---|
@@ -111,34 +86,6 @@ queues the user for the next run.
   Spring services, the three Postgres exporters and `redis-exporter`. Config: `infra/monitoring/prometheus/prometheus.yml`.
 - **Grafana** (`http://localhost:3000`, user `admin`, password `GRAFANA_ADMIN_PASSWORD` from `.env`)
   opens on the provisioned **PSIA Movie Hub** dashboard (`infra/monitoring/grafana/`).
-
-Dashboard sections:
-
-| Section | What it shows |
-|---|---|
-| Overview | Targets up/down, request rate, p95 latency, 4xx/5xx rate per service |
-| Endpoints | Request rate and p95 latency per endpoint (filter by service) |
-| AI / LLM | LLM calls by outcome, LLM p95/avg latency, recommendations by mode, AI success ratio |
-| Background agent | Feed builds (ai/fallback/failed), build duration, builds in progress, feed requests by status, agent ticks |
-| Users | Registrations, logins (success/failure), profile updates |
-| JVM & connection pools | Heap, CPU, threads, GC pauses, Hikari DB connections |
-| Data stores | Postgres/Redis up, connections and transactions per database, Redis keys and memory |
-
-Custom application metrics (on top of Spring Boot's HTTP/JVM/Hikari metrics):
-
-| Metric | Service | Labels |
-|---|---|---|
-| `llm_request_seconds` (histogram) | recommendation, agent | `outcome` = success / timeout / error |
-| `recommendations_total` | recommendation | `mode` = ai / fallback / quick / cached |
-| `feed_build_seconds` (histogram) | agent | — |
-| `feed_builds_total` | agent | `result` = ai / fallback / failed |
-| `feed_builds_in_progress` (gauge) | agent | — |
-| `feed_requests_total` | agent | `status` = ready / building / needs_preferences |
-| `agent_ticks_total`, `agent_profiles_queued_total` | agent | `result` = ok / error |
-| `auth_registrations_total`, `auth_logins_total` | auth | `result` = success / failure |
-| `profile_updates_total` | profile | — |
-
-Actuator endpoints are not routed by the gateway; only Prometheus reaches them over the internal network.
 
 ## GCP Cloud Deployment (Kubernetes)
 
@@ -212,7 +159,7 @@ ssh-keygen -t rsa -b 2048   # press ENTER to all prompts — no passphrase
 ### 6. Provision infrastructure with Terraform
 
 ```bash
-cd /root/project/gcpcloud
+cd project/gcpcloud
 terraform init
 terraform plan
 terraform apply
