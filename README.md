@@ -379,3 +379,4 @@ Compute Engine when it isn't needed, or remove it with
 | _João Sérgio Viegas_ | auth-service, profile-service, frontend: auth/profile/browse pages |
 | _Diogo Lobo_ | recommendation-service, dataset, frontend: movie search + "Ask AI" page |
 | _Miguel Silva_ | agent-service, frontend shell + feed page, compose/justfile integration |
+
