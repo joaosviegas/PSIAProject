@@ -1,9 +1,12 @@
-# PSIA - AI Movie Recommendation Hub (group 37)
+# PSIA - AI Movie Recommendation Hub (g37)
 
 Microservices app for the Platforms for AI Systems project: register, build a movie profile, browse other users,
 ask an LLM for recommendations, and get a feed pre-computed by a background agent.
 
-![Web UI](hero-section.png)
+Relevant Files: [Project Specification](PROJECT.md) · [Project Report](psia-report.pdf)
+
+
+![Web UI](images/hero-section.png)
 
 ## Prerequisites
 
@@ -50,7 +53,7 @@ first startup. No external downloads or scripts needed.
 
 ## Services
 
-![Architecture](diagram-full.png)
+![Architecture](images/diagram-full.png)
 
 | Service | Path via gateway | Store |
 |---|---|---|
